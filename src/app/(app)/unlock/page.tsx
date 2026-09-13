@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { getPlanContext } from "@/lib/plan-context";
 import { Card } from "@/components/ui/card";
+import { activePrice, expectedAmountCents } from "@/lib/purchase";
+import { startCheckout } from "./actions";
 
 // §14.3 / §4.1 — the purchase screen. Price comes from LAUNCH_ACTIVE_PRICE; never hardcoded copy.
-// Stripe Checkout wiring lands in Phase 7; until then the button explains that.
+// Two triggers reach here (Module 1 complete, or a locked task). Never a modal, never a countdown.
 
 export default async function UnlockPage({ searchParams }: { searchParams: Promise<{ from?: string }> }) {
   const { from } = await searchParams;
@@ -16,8 +18,8 @@ export default async function UnlockPage({ searchParams }: { searchParams: Promi
       </div>
     );
   }
-  const active = process.env.LAUNCH_ACTIVE_PRICE === "standard" ? "standard" : "founding";
-  const price = active === "standard" ? 99 : 79;
+  const active = activePrice();
+  const price = expectedAmountCents(active) / 100;
   const remaining = ctx.progress.denominator - ctx.progress.completedRequired;
 
   return (
@@ -42,10 +44,13 @@ export default async function UnlockPage({ searchParams }: { searchParams: Promi
           Not a subscription. And if you'd rather we build your website, <strong>the ${price} you pay here comes off the $900</strong> within 90 days.
         </p>
         <p className="mt-2 text-sm text-ink-500">30-day refund, no questions asked.</p>
-        <button type="button" disabled className="tap mt-5 flex h-13 w-full items-center justify-center rounded-xl bg-ink-900 font-semibold text-white opacity-50">
-          Checkout coming soon
-        </button>
-        <p className="mt-2 text-center text-xs text-ink-500">Payments are being connected. Module 1 and Your Business stay free meanwhile.</p>
+        <form action={startCheckout} className="mt-5">
+          <input type="hidden" name="from" value={from && from.startsWith("/") ? from : "/home"} />
+          <button type="submit" className="tap flex h-13 w-full items-center justify-center rounded-xl bg-ink-900 font-semibold text-white hover:bg-ink-700">
+            Unlock Launch — ${price}
+          </button>
+        </form>
+        <p className="mt-2 text-center text-xs text-ink-500">Secure checkout by Stripe. Module 1 and Your Business stay free either way.</p>
       </Card>
 
       <p className="text-center text-sm">

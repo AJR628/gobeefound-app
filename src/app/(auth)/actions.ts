@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { sendWelcome } from "@/lib/email";
 
 // Authentication only (authentication OAuth is permitted, §0). No platform-data scopes.
 
@@ -30,6 +31,7 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
   });
   // Never reveal whether the email already exists (§21.1).
   if (error && !/already/i.test(error.message)) return { error: "Something went wrong. Please try again." };
+  if (!error) await sendWelcome(parsed.data.email); // §16.5 — one of the four transactional emails
   redirect("/onboarding");
 }
 
