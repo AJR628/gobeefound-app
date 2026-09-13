@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getCurrentBusiness, requireUser } from "@/lib/current-user";
+import { track } from "@/lib/analytics/server";
 import { computePlan } from "@/lib/plan";
 import {
   completeOnboarding,
@@ -28,11 +29,19 @@ export async function readDraft(): Promise<Partial<OnboardingDraft>> {
 }
 
 /** Autosave a single answer (or a few). Merges into the draft cookie. */
+const QUESTION_ID: Record<string, string> = {
+  displayName: "Q1", trade: "Q2", city: "Q3", state: "Q3", serviceAreaType: "Q4", alreadyServing: "Q5",
+  hasDomain: "Q6", hasWebsite: "Q6", hasEmail: "Q6", hasPhone: "Q6", hasGBP: "Q7", hasSocial: "Q7", hasReviews: "Q8",
+};
+
 export async function saveDraft(partial: Partial<OnboardingDraft>): Promise<void> {
-  await requireUser();
+  const user = await requireUser();
   const current = await readDraft();
   const merged = onboardingDraftSchema.partial().safeParse({ ...current, ...partial });
   if (!merged.success) return;
+  for (const [k, v] of Object.entries(partial)) {
+    if (QUESTION_ID[k]) await track(user.id, "onboarding_question_answered", { questionId: QUESTION_ID[k], wasUnsure: v === "unsure" });
+  }
   (await cookies()).set(DRAFT_COOKIE, JSON.stringify(merged.data), {
     httpOnly: true,
     sameSite: "lax",
@@ -67,6 +76,8 @@ export async function submitOnboarding(draft: OnboardingDraft): Promise<Complete
   }
 
   await completeOnboarding(user.id, parsed.data);
+  const alreadyHasCount = (["hasDomain", "hasWebsite", "hasEmail", "hasPhone", "hasGBP", "hasSocial", "hasReviews"] as const).filter((k) => parsed.data[k] === "yes").length;
+  await track(user.id, "onboarding_completed", { trade: parsed.data.trade, state: parsed.data.state, serviceAreaType: parsed.data.serviceAreaType, alreadyHasCount });
   jar.delete(DRAFT_COOKIE);
   redirect("/plan");
 }

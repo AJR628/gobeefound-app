@@ -52,7 +52,7 @@ export function KnownValues({
                 </div>
               )}
             </div>
-            {r.text && <CopyButton value={r.text} />}
+            {r.text && <CopyButton value={r.text} event={{ name: "known_value_copied", props: { taskId: currentTaskId, fieldKey: r.field } }} />}
           </li>
         ))}
       </ul>

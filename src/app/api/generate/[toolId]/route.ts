@@ -4,6 +4,7 @@ import { requireBusiness } from "@/lib/current-user";
 import { getEntitlement } from "@/lib/entitlement";
 import { db } from "@/lib/db";
 import { runGenerator, TOOL_BY_ROUTE } from "@/lib/generators";
+import { track } from "@/lib/analytics/server";
 
 // §18.1 /api/generate/[toolId] — requires launch entitlement. Rate-limited per business (§16.6).
 
@@ -27,5 +28,6 @@ export async function POST(request: Request, ctx: { params: Promise<{ toolId: st
 
   const result = await runGenerator(tool, business, profile, body.data);
   if (!result.ok) return NextResponse.json(result, { status: result.missing ? 422 : 502 });
+  await track(user.id, "generator_run", { toolId: tool });
   return NextResponse.json(result);
 }

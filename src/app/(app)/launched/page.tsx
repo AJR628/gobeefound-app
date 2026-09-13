@@ -37,7 +37,7 @@ export default async function LaunchedPage() {
       </header>
 
       <div className="no-print flex flex-wrap gap-3">
-        <PrintButton label="Print your summary" />
+        <PrintButton label="Print your summary" event="presence_summary_downloaded" />
         <a href="/your-business/export/json" className="tap inline-flex h-12 items-center rounded-xl border border-ink-300 bg-white px-5 font-semibold">Download everything</a>
       </div>
 
@@ -82,7 +82,7 @@ export default async function LaunchedPage() {
         <p className="mt-1 text-sm text-ink-700">Send them the same plan. It's free to start.</p>
         <div className="mt-3 flex items-center gap-2">
           <code className="flex-1 truncate rounded-lg bg-white px-3 py-2.5 text-sm">{referral}</code>
-          <CopyButton value={referral} label="Copy link" />
+          <CopyButton value={referral} label="Copy link" event={{ name: "referral_link_copied" }} />
         </div>
       </section>
 

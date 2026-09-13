@@ -2,9 +2,12 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { captureClient } from "@/lib/analytics/client";
+
+type CopyEvent = { name: "known_value_copied" | "referral_link_copied" | "generator_output_copied"; props?: Record<string, unknown> };
 
 /** One-tap copy (P16). The most-used control in the product. */
-export function CopyButton({ value, label = "Copy", className }: { value: string; label?: string; className?: string }) {
+export function CopyButton({ value, label = "Copy", className, event }: { value: string; label?: string; className?: string; event?: CopyEvent }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
@@ -14,6 +17,7 @@ export function CopyButton({ value, label = "Copy", className }: { value: string
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(value);
+          if (event) captureClient(event.name, event.props);
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
         } catch {

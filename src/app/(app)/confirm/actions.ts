@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getPlanContext } from "@/lib/plan-context";
 import { fieldsToStampOnConfirm, getConfirmationBlockers } from "@/lib/confirmation";
+import { daysSince, track } from "@/lib/analytics/server";
 
 // §12.3 — on confirm, in ONE transaction: stamp provenance → verify assets → Decision → stage=launched.
 
@@ -30,6 +31,7 @@ export async function confirmBaseline(): Promise<void> {
     db.business.update({ where: { id: ctx.business.id }, data: { stage: "launched", launchedAt: now } }),
   ]);
 
+  await track(ctx.user.id, "confirmation_completed", { daysSinceSignup: daysSince(ctx.business.createdAt) });
   revalidatePath("/home");
   revalidatePath("/your-business");
   redirect("/launched");

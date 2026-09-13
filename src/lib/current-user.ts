@@ -2,6 +2,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { db } from "./db";
 import { createSupabaseServerClient } from "./supabase/server";
+import { track } from "./analytics/server";
 
 /**
  * Resolves the signed-in Supabase user and mirrors it into our User table (§17.2 User.id = auth id).
@@ -14,11 +15,13 @@ export const requireUser = cache(async () => {
   if (!authUser || !authUser.email) redirect("/login");
 
   const provider = authUser.app_metadata?.provider === "google" ? "google" : "email";
+  const existing = await db.user.findUnique({ where: { id: authUser.id }, select: { id: true } });
   const user = await db.user.upsert({
     where: { id: authUser.id },
     create: { id: authUser.id, email: authUser.email, authProvider: provider },
     update: { lastSeenAt: new Date(), email: authUser.email },
   });
+  if (!existing) await track(user.id, "signup_completed", { authProvider: provider });
   return user;
 });
 

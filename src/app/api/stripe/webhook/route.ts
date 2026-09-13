@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
 import { creditExpiry } from "@/lib/purchase";
 import { sendReceipt, sendRefundConfirmation } from "@/lib/email";
+import { track } from "@/lib/analytics/server";
 
 // §18.3 — signature-verified (raw body), idempotent on stripeSessionId. The ONLY path that grants
 // entitlement. Refund flips status; entitlement derivation revokes automatically (§17.1).
@@ -40,6 +41,7 @@ export async function POST(request: Request) {
         update: { status: "paid", paidAt, amountCents, creditExpiresAt: creditExpiry(paidAt), stripePaymentIntentId: paymentIntentId },
       });
 
+      if (purchase.userId) await track(purchase.userId, "purchase_completed", { amountCents: purchase.amountCents });
       const email = session.customer_details?.email ?? session.customer_email;
       if (email) await sendReceipt(email, purchase.amountCents, purchase.creditExpiresAt!);
       break;

@@ -4,14 +4,16 @@ import { computePlan, planTasksForModule } from "@/lib/plan";
 import { Card, SectionLabel } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { markPlanSeen } from "../onboarding/actions";
+import { track } from "@/lib/analytics/server";
 
 // §6 step 5 — the plan reveal. Every module, every task TITLE, counts, ordering, milestones.
 // Verify variants are "adapted" steps and are never described with the word s-k-i-p-p-e-d (§10.6, §21.11).
 
 export default async function PlanPage({ searchParams }: { searchParams: Promise<{ delta?: string }> }) {
   const { delta } = await searchParams;
-  const { business, profile, onboarding } = await requireBusiness();
+  const { user, business, profile, onboarding } = await requireBusiness();
   const plan = computePlan({ trade: business.trade, serviceAreaType: business.serviceAreaType, answers: onboarding });
+  await track(user.id, "plan_revealed", { requiredTaskCount: plan.requiredTotal, adaptedCount: plan.adaptedCount });
   const archetype = ARCHETYPE_BY_ID[business.trade];
   const firstName = profile.displayName.split(" ")[0];
   const deltaNum = delta ? Number.parseInt(delta, 10) : 0;

@@ -7,6 +7,7 @@ import { getEntitlement } from "@/lib/entitlement";
 import { db } from "@/lib/db";
 import { saveEditedOutput } from "@/lib/generators";
 import { saveCanonicalFields } from "@/lib/canonical";
+import { track } from "@/lib/analytics/server";
 
 const payload = z.object({
   id: z.string().uuid(),
@@ -26,6 +27,9 @@ export async function acceptGeneratedOutput(input: unknown): Promise<{ ok: boole
   if (!row) return { ok: false, error: "That draft wasn't found." };
 
   await saveEditedOutput(business.id, row.id, parsed.data.edited, row.output as Record<string, unknown>);
+  const original = row.output as Record<string, unknown>;
+  const editedFields = Object.keys(parsed.data.edited).filter((k) => JSON.stringify(parsed.data.edited[k]) !== JSON.stringify(original[k]));
+  if (editedFields.length) await track(user.id, "generator_output_edited", { toolId: row.toolType, fieldsEdited: editedFields });
 
   const patch: Record<string, unknown> = {};
   for (const [field, outputKey] of Object.entries(parsed.data.saveTo)) {

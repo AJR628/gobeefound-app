@@ -118,7 +118,7 @@ export function GeneratorForm({ toolRoute, tool, questions, reviewLink, displayN
         <section key={f.key} className="rounded-2xl border border-ink-100 bg-white p-4">
           <div className="mb-1 flex items-center justify-between gap-3">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-500">{f.label}</h2>
-            <CopyButton value={String(edited[f.key] ?? "")} />
+            <CopyButton value={String(edited[f.key] ?? "")} event={{ name: "generator_output_copied", props: { toolId: tool } }} />
           </div>
           <textarea rows={f.multiline ? 4 : 1} value={String(edited[f.key] ?? "")} onChange={(e) => setEdited({ ...edited, [f.key]: e.target.value })} className="w-full rounded-lg border border-ink-100 px-3 py-2 text-[15px] focus:border-ink-900 focus:outline-none" />
           {f.saveTo && <p className="mt-1 text-xs text-ink-500">Saved to Your Business when you save.</p>}

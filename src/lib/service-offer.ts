@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import type { ServicePlacement } from "@/content";
 import { db } from "./db";
 import { requireBusiness } from "./current-user";
+import { track } from "./analytics/server";
 
 // §15 — four placements, one per screen, dismissal persists 30 days as a Decision row.
 
@@ -19,7 +20,8 @@ export async function isOfferDismissed(businessId: string, placement: ServicePla
 }
 
 export async function dismissOffer(placement: ServicePlacement): Promise<void> {
-  const { business } = await requireBusiness();
+  const { user, business } = await requireBusiness();
+  await track(user.id, "service_offer_dismissed", { placement });
   await db.decision.create({
     data: { businessId: business.id, context: "service_offer", contextId: placement, proposedAction: "website_build", outcome: "ignored" },
   });
@@ -27,7 +29,8 @@ export async function dismissOffer(placement: ServicePlacement): Promise<void> {
 
 /** Records the lead, then sends the owner to gobeefound.com/website (§15.4). The app sells nothing. */
 export async function clickOffer(placement: ServicePlacement): Promise<void> {
-  const { business } = await requireBusiness();
+  const { user, business } = await requireBusiness();
+  await track(user.id, "service_offer_clicked", { placement });
   await db.$transaction([
     db.serviceLead.create({ data: { businessId: business.id, placement, serviceType: "website_build" } }),
     db.decision.create({

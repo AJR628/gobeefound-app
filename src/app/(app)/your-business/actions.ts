@@ -6,13 +6,15 @@ import { db } from "@/lib/db";
 import { requireBusiness } from "@/lib/current-user";
 import { saveCanonicalFields } from "@/lib/canonical";
 import { fieldsToStampOnConfirm } from "@/lib/confirmation";
+import { track } from "@/lib/analytics/server";
 
 // §12.1 — inline edits go through the ONE write path (saveCanonicalFields) so a task revisit sees them.
 
 export async function saveProfileField(field: string, value: unknown): Promise<{ ok: boolean; error?: string }> {
   if (!(BUSINESS_PROFILE_FIELDS as readonly string[]).includes(field)) return { ok: false, error: "Unknown field." };
-  const { business } = await requireBusiness();
+  const { user, business } = await requireBusiness();
   const result = await saveCanonicalFields(business.id, { [field]: value }, "owner_entered");
+  if (result.ok) await track(user.id, "business_field_edited", { fieldKey: field, source: "your_business" });
   revalidatePath("/your-business");
   revalidatePath("/home");
   if (!result.ok) return { ok: false, error: result.errors[field as BusinessProfileField] ?? "Check this value." };

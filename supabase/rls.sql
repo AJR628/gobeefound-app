@@ -1,0 +1,56 @@
+-- GoBeeFound V1 — Row-Level Security (§16.6, §20.1). Defense in depth.
+-- The application talks to Postgres through Prisma with the postgres role (bypasses RLS) and
+-- enforces ownership in code on every query. These policies close the OTHER door: Supabase's
+-- PostgREST / anon / authenticated roles can never read or write another owner's rows.
+--
+-- Apply once in the Supabase SQL editor after `prisma migrate deploy`.
+-- Prisma table names are the model names (quoted, case-sensitive).
+
+-- Helper: does the current auth user own this business?
+create or replace function public.owns_business(b uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from "Business" where id = b and "ownerId" = auth.uid());
+$$;
+
+-- 1. User — a user sees only their own row.
+alter table "User" enable row level security;
+create policy "user_self_select" on "User" for select using (id = auth.uid());
+create policy "user_self_update" on "User" for update using (id = auth.uid());
+
+-- 2. Business
+alter table "Business" enable row level security;
+create policy "business_owner_all" on "Business" for all using ("ownerId" = auth.uid()) with check ("ownerId" = auth.uid());
+
+-- 3–9, 11. Business-scoped tables
+alter table "OnboardingAnswers" enable row level security;
+create policy "onboarding_owner_all" on "OnboardingAnswers" for all using (public.owns_business("businessId")) with check (public.owns_business("businessId"));
+
+alter table "BusinessProfile" enable row level security;
+create policy "profile_owner_all" on "BusinessProfile" for all using (public.owns_business("businessId")) with check (public.owns_business("businessId"));
+
+alter table "FieldProvenance" enable row level security;
+create policy "provenance_owner_all" on "FieldProvenance" for all using (public.owns_business("businessId")) with check (public.owns_business("businessId"));
+
+alter table "ConnectedAsset" enable row level security;
+create policy "asset_owner_all" on "ConnectedAsset" for all using (public.owns_business("businessId")) with check (public.owns_business("businessId"));
+
+alter table "TaskState" enable row level security;
+create policy "taskstate_owner_all" on "TaskState" for all using (public.owns_business("businessId")) with check (public.owns_business("businessId"));
+
+alter table "GeneratedContent" enable row level security;
+create policy "generated_owner_all" on "GeneratedContent" for all using (public.owns_business("businessId")) with check (public.owns_business("businessId"));
+
+alter table "Decision" enable row level security;
+create policy "decision_owner_all" on "Decision" for all using (public.owns_business("businessId")) with check (public.owns_business("businessId"));
+
+alter table "ServiceLead" enable row level security;
+create policy "servicelead_owner_all" on "ServiceLead" for all using (public.owns_business("businessId")) with check (public.owns_business("businessId"));
+
+-- 10. Purchase — readable by its owner; only the server (webhook, service role) writes it.
+alter table "Purchase" enable row level security;
+create policy "purchase_owner_select" on "Purchase" for select using ("userId" = auth.uid());
+
+-- Storage: the logo bucket is PRIVATE. Objects live at <businessId>/logo.<ext>.
+-- Reads happen via server-issued signed URLs; direct client access is denied.
+-- (Create the bucket named per SUPABASE_LOGO_BUCKET with "Public" OFF. No storage policies
+--  are needed because only the service role touches it.)

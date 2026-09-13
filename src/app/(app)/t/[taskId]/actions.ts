@@ -8,6 +8,15 @@ import { db } from "@/lib/db";
 import { requireBusiness } from "@/lib/current-user";
 import { getEntitlement } from "@/lib/entitlement";
 import { saveCanonicalFields } from "@/lib/canonical";
+import { computePlan } from "@/lib/plan";
+import { evaluateMilestones } from "@/lib/progress";
+import { daysSince, track } from "@/lib/analytics/server";
+
+async function reachedMilestones(business: { id: string; trade: never; serviceAreaType: never; stage: "launching" | "launched" } | { id: string; trade: string; serviceAreaType: string; stage: "launching" | "launched" }, onboarding: Parameters<typeof computePlan>[0]["answers"]) {
+  const rows = await db.taskState.findMany({ where: { businessId: business.id } });
+  const plan = computePlan({ trade: business.trade as Parameters<typeof computePlan>[0]["trade"], serviceAreaType: business.serviceAreaType as Parameters<typeof computePlan>[0]["serviceAreaType"], answers: onboarding });
+  return new Set(evaluateMilestones(plan, rows.map((r) => ({ taskId: r.taskId, status: r.status, skipReason: r.skipReason })), business.stage).filter((m) => m.reached).map((m) => m.milestone.id));
+}
 
 // §10.5 skip handling, §18.2 TaskState machine, §5.4 Decision log writes.
 
@@ -28,12 +37,17 @@ function revalidateTask(taskId: string, moduleId: string) {
 }
 
 export async function markComplete(taskId: string): Promise<void> {
-  const { task, business } = await requireTaskAccess(taskId);
+  const { task, user, business, onboarding } = await requireTaskAccess(taskId);
+  const before = await reachedMilestones(business, onboarding);
   await db.taskState.upsert({
     where: { businessId_taskId: { businessId: business.id, taskId } },
     create: { businessId: business.id, taskId, status: "complete", completedAt: new Date() },
     update: { status: "complete", skipReason: null, completedAt: new Date() },
   });
+  const days = daysSince(business.createdAt);
+  await track(user.id, "task_completed", { taskId, moduleId: task.moduleId, daysSinceSignup: days });
+  const after = await reachedMilestones(business, onboarding);
+  for (const id of after) if (!before.has(id)) await track(user.id, "milestone_reached", { milestoneId: id, daysSinceSignup: days });
   revalidateTask(taskId, task.moduleId);
   redirect("/home");
 }
@@ -48,7 +62,8 @@ export async function unComplete(taskId: string): Promise<void> {
 }
 
 export async function saveForLater(taskId: string): Promise<void> {
-  const { task, business } = await requireTaskAccess(taskId);
+  const { task, user, business } = await requireTaskAccess(taskId);
+  await track(user.id, "task_saved_for_later", { taskId });
   await db.taskState.upsert({
     where: { businessId_taskId: { businessId: business.id, taskId } },
     create: { businessId: business.id, taskId, status: "saved_for_later", skipReason: "later" },
@@ -63,7 +78,8 @@ const skipReason = z.enum(["already_done", "not_doing", "later"]);
 /** One question, three answers (§10.5). Every skip writes a Decision row. */
 export async function skipTask(taskId: string, formData: FormData): Promise<void> {
   const reason = skipReason.parse(formData.get("reason"));
-  const { task, business } = await requireTaskAccess(taskId);
+  const { task, user, business } = await requireTaskAccess(taskId);
+  await track(user.id, "task_skipped", { taskId, skipReason: reason });
 
   const status = reason === "already_done" ? "complete" : reason === "not_doing" ? "skipped" : "saved_for_later";
   await db.$transaction([
@@ -104,7 +120,7 @@ export type SaveFieldsState = { ok?: boolean; errors?: Record<string, string> } 
 
 /** Element 12 — "Save your info". Writes only the task's declared canonicalFields (P16 write path). */
 export async function saveTaskFields(taskId: string, _prev: SaveFieldsState, formData: FormData): Promise<SaveFieldsState> {
-  const { task, business } = await requireTaskAccess(taskId);
+  const { task, user, business } = await requireTaskAccess(taskId);
   const raw: Record<string, unknown> = {};
   for (const field of task.canonicalFields) {
     const v = formData.get(field);
@@ -129,6 +145,11 @@ export async function saveTaskFields(taskId: string, _prev: SaveFieldsState, for
   }
   const result = await saveCanonicalFields(business.id, raw, "owner_entered");
   if (!result.ok) return { ok: false, errors: result.errors };
+  for (const fieldKey of Object.keys(raw)) await track(user.id, "business_field_edited", { fieldKey, source: "task" });
+  const suggested = formData.get("timezoneSuggested");
+  if (typeof raw.timezone === "string" && raw.timezone && typeof suggested === "string" && suggested) {
+    await track(user.id, "timezone_confirmed", { matchedBrowserSuggestion: raw.timezone === suggested });
+  }
 
   // Asset declaration folded into the task that creates it (§8 — no separate URL tasks).
   const assetUrl = formData.get("assetUrl");
@@ -136,6 +157,7 @@ export async function saveTaskFields(taskId: string, _prev: SaveFieldsState, for
     const { declareAsset } = await import("@/lib/assets");
     const r = await declareAsset(business.id, task.createsAsset, assetUrl);
     if (!r.ok) return { ok: false, errors: { assetUrl: r.error } };
+    await track(user.id, "asset_declared", { assetType: task.createsAsset });
   }
 
   revalidateTask(taskId, task.moduleId);

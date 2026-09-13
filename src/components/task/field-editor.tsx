@@ -239,6 +239,7 @@ function TimezoneSelect({ initial, error }: { initial: string | null; error?: st
           <option key={z} value={z}>{z.replace(/_/g, " ")}</option>
         ))}
       </select>
+      <input type="hidden" name="timezoneSuggested" value={suggested ?? ""} />
       {!initial && suggested && value === suggested && (
         <p className="mt-1.5 text-xs text-ink-500">Suggested from your device — check it's right before you save.</p>
       )}

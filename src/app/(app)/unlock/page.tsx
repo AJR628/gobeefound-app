@@ -3,6 +3,7 @@ import { getPlanContext } from "@/lib/plan-context";
 import { Card } from "@/components/ui/card";
 import { activePrice, expectedAmountCents } from "@/lib/purchase";
 import { startCheckout } from "./actions";
+import { track } from "@/lib/analytics/server";
 
 // §14.3 / §4.1 — the purchase screen. Price comes from LAUNCH_ACTIVE_PRICE; never hardcoded copy.
 // Two triggers reach here (Module 1 complete, or a locked task). Never a modal, never a countdown.
@@ -20,6 +21,7 @@ export default async function UnlockPage({ searchParams }: { searchParams: Promi
   }
   const active = activePrice();
   const price = expectedAmountCents(active) / 100;
+  await track(ctx.user.id, "unlock_viewed", { trigger: from ? "locked_task" : "module_complete", completedTaskCount: ctx.progress.completedRequired });
   const remaining = ctx.progress.denominator - ctx.progress.completedRequired;
 
   return (
