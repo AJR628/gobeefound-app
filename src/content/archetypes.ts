@@ -1,0 +1,112 @@
+import type { ArchetypeDefinition } from "./types";
+
+// §11.4 — module priority EXCLUDES name_domain_assets, which is always second.
+// §11.5 — promoteToRequired / hide reference real task IDs (validated at build).
+
+export const ARCHETYPES: ArchetypeDefinition[] = [
+  {
+    id: "handyman",
+    name: "Handyman / general repairs",
+    tradeNoun: "handyman",
+    modulePriority: ["foundation", "google", "reviews", "website", "first_customers", "social"],
+    promoteToRequired: [],
+    hide: [],
+    socialPlatforms: ["facebook"],
+    socialNote: "Facebook and local community groups. Instagram is not worth your time yet.",
+  },
+  {
+    id: "cleaning",
+    name: "Cleaning",
+    tradeNoun: "cleaner",
+    modulePriority: ["foundation", "google", "reviews", "website", "first_customers", "social"],
+    promoteToRequired: [],
+    hide: [],
+    socialPlatforms: ["facebook"],
+    socialNote: "Facebook and local community groups. Instagram is optional.",
+  },
+  {
+    id: "landscaping",
+    name: "Landscaping & outdoor",
+    tradeNoun: "landscaper",
+    modulePriority: ["foundation", "google", "website", "reviews", "first_customers", "social"],
+    promoteToRequired: ["7.5"],
+    hide: [],
+    socialPlatforms: ["facebook", "instagram"],
+    socialNote: "Facebook for sure. Instagram is optional but before-and-after photos do well there.",
+  },
+  {
+    id: "licensed_trade",
+    name: "Licensed trade (plumber, electrician, HVAC)",
+    tradeNoun: "tradesperson",
+    modulePriority: ["foundation", "google", "website", "reviews", "first_customers", "social"],
+    promoteToRequired: ["1.6"],
+    hide: [],
+    socialPlatforms: ["facebook"],
+    socialNote: "Facebook only, and only if you want it. Your customers find you on Google, not Instagram.",
+  },
+  {
+    id: "mobile_service",
+    name: "Mobile service (detailing, mechanic, pressure washing)",
+    tradeNoun: "mobile service",
+    modulePriority: ["foundation", "google", "reviews", "website", "first_customers", "social"],
+    promoteToRequired: ["7.5"],
+    hide: [],
+    socialPlatforms: ["facebook"],
+    socialNote: "Facebook and local community groups. Your vehicle is your best advertisement.",
+  },
+  {
+    id: "beauty",
+    name: "Beauty & personal care",
+    tradeNoun: "stylist",
+    modulePriority: ["foundation", "social", "google", "reviews", "website", "first_customers"],
+    promoteToRequired: ["6.2", "6.3"],
+    hide: [],
+    socialPlatforms: ["instagram", "facebook"],
+    socialNote: "Instagram is where your customers decide. It comes before your website.",
+  },
+  {
+    id: "photography",
+    name: "Photography & creative",
+    tradeNoun: "photographer",
+    modulePriority: ["foundation", "website", "social", "google", "reviews", "first_customers"],
+    promoteToRequired: ["6.2", "6.3"],
+    hide: [],
+    socialPlatforms: ["instagram", "facebook"],
+    socialNote: "Your portfolio and Instagram do the selling. Both are required for you.",
+  },
+  {
+    id: "food",
+    name: "Food & baking",
+    tradeNoun: "baker",
+    modulePriority: ["foundation", "social", "google", "reviews", "website", "first_customers"],
+    promoteToRequired: ["6.2", "6.3"],
+    hide: [],
+    socialPlatforms: ["instagram", "facebook"],
+    socialNote: "People buy food with their eyes. Instagram and Facebook are both required for you.",
+  },
+  {
+    id: "pet_services",
+    name: "Pet services",
+    tradeNoun: "pet care provider",
+    modulePriority: ["foundation", "google", "reviews", "social", "website", "first_customers"],
+    promoteToRequired: [],
+    hide: [],
+    socialPlatforms: ["facebook"],
+    socialNote: "Facebook and local groups — pet owners talk to each other there constantly.",
+  },
+  {
+    id: "other",
+    name: "Other local service",
+    tradeNoun: "local business",
+    modulePriority: ["foundation", "website", "google", "reviews", "first_customers", "social"],
+    promoteToRequired: [],
+    hide: [],
+    socialPlatforms: ["facebook"],
+    socialNote: "Start with Facebook if anything. Add more only once it's clearly bringing customers.",
+  },
+];
+
+export const ARCHETYPE_BY_ID = Object.fromEntries(ARCHETYPES.map((a) => [a.id, a])) as Record<
+  ArchetypeDefinition["id"],
+  ArchetypeDefinition
+>;

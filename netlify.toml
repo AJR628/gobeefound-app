@@ -1,0 +1,16 @@
+# GoBeeFound V1 — Netlify deployment (§16.1).
+# `npm run build` runs content validation + guardrail tests BEFORE `next build`,
+# so a content error or a §17.4 violation fails the deploy.
+#
+# No scheduled functions, no background functions (§3). Do not add [functions] schedules.
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NPM_FLAGS = "--no-audit --no-fund"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

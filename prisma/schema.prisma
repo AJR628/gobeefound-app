@@ -1,0 +1,332 @@
+// GoBeeFound V1 — §17.2. Exactly 11 models. See AGENTS.md before adding anything.
+
+generator client {
+  provider      = "prisma-client-js"
+  // "native" for local dev; rhel-openssl-3.0.x for Netlify Functions (§16.1)
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------- enums ----------
+
+enum AuthProvider {
+  email
+  google
+}
+
+enum Trade {
+  handyman
+  cleaning
+  landscaping
+  licensed_trade
+  mobile_service
+  beauty
+  photography
+  food
+  pet_services
+  other
+}
+
+enum ServiceAreaType {
+  atCustomer
+  atMyLocation
+  both
+}
+
+enum BusinessStage {
+  launching
+  launched
+}
+
+enum YesNoUnsure {
+  yes
+  no
+  unsure
+}
+
+enum PreferredContact {
+  call
+  text
+  form
+  any
+}
+
+enum ProvenanceSource {
+  owner_entered
+  generated_approved
+}
+
+enum ConfirmedVia {
+  task_completion
+  baseline_confirmation
+  manual_recheck
+}
+
+enum AssetType {
+  website
+  gbp
+  facebook
+  instagram
+  booking
+  other
+}
+
+// ONE state column (§5.3). `connected` is reserved and unreachable in V1.
+enum ConnectionState {
+  declared
+  owner_verified
+  connected
+}
+
+enum TaskStatus {
+  not_started
+  saved_for_later
+  complete
+  skipped
+  awaiting_verification
+}
+
+enum SkipReason {
+  already_done
+  not_doing
+  later
+}
+
+enum ToolType {
+  website_copy
+  descriptions
+  review_requests
+}
+
+enum DecisionContext {
+  task_skip
+  generator_edit
+  service_offer
+  confirmation
+}
+
+enum DecisionOutcome {
+  accepted
+  rejected
+  deferred
+  ignored
+}
+
+enum Product {
+  launch
+}
+
+enum PurchaseStatus {
+  pending
+  paid
+  refunded
+}
+
+enum ServicePlacement {
+  task_3_1
+  task_3_4
+  home_footer
+  your_business_footer
+}
+
+enum ServiceType {
+  website_build
+}
+
+// ---------- models (11) ----------
+
+model User {
+  id           String       @id @db.Uuid // mirrors the Supabase Auth user id
+  email        String       @unique
+  authProvider AuthProvider
+  createdAt    DateTime     @default(now())
+  lastSeenAt   DateTime     @default(now())
+
+  business  Business?
+  purchases Purchase[]
+}
+
+model Business {
+  id              String          @id @default(uuid()) @db.Uuid
+  ownerId         String          @unique @db.Uuid // one business per user in V1
+  trade           Trade
+  city            String
+  state           String // 2-letter US code, from onboarding Q3. Never inferred, no default.
+  serviceAreaType ServiceAreaType
+  alreadyServing  Boolean
+  stage           BusinessStage   @default(launching)
+  launchedAt      DateTime?
+  createdAt       DateTime        @default(now())
+
+  owner            User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  onboarding       OnboardingAnswers?
+  profile          BusinessProfile?
+  provenance       FieldProvenance[]
+  assets           ConnectedAsset[]
+  taskStates       TaskState[]
+  generatedContent GeneratedContent[]
+  decisions        Decision[]
+  serviceLeads     ServiceLead[]
+}
+
+model OnboardingAnswers {
+  businessId String      @id @db.Uuid
+  hasDomain  YesNoUnsure @default(unsure)
+  hasWebsite YesNoUnsure @default(unsure)
+  hasEmail   YesNoUnsure @default(unsure)
+  hasPhone   YesNoUnsure @default(unsure)
+  hasGBP     YesNoUnsure @default(unsure)
+  hasSocial  YesNoUnsure @default(unsure)
+  hasReviews YesNoUnsure @default(unsure)
+  answeredAt DateTime    @default(now())
+  revisedAt  DateTime?
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model BusinessProfile {
+  businessId String @id @db.Uuid
+
+  // identity
+  displayName   String // seeded from onboarding Q1
+  legalName     String?
+  phone         String?
+  email         String?
+  streetAddress String? // captured by task 4.3 only when hideAddress = false
+  hideAddress   Boolean @default(false)
+  serviceAreas  Json    @default("[]") // string[]
+  hours         Json? // { mon: {open, close} | "closed", ... }
+  timezone      String? // IANA. NO DEFAULT. Set only when the owner confirms at task 1.5.
+
+  // offer
+  services        Json    @default("[]") // [{ name, description? }]
+  pricingApproach String?
+  idealCustomer   String?
+  differentiators Json? // string[]
+
+  // brand
+  logoUrl          String? // Supabase Storage path (the single file-storage exception)
+  brandColors      Json? // { primary, secondary }
+  shortDescription String?
+  gbpDescription   String?
+  longDescription  String?
+
+  // web
+  domain          String?
+  pageTitle       String?
+  metaDescription String?
+
+  // reputation
+  reviewLink String?
+
+  // operations
+  preferredContact   PreferredContact?
+  responseCommitment String?
+
+  updatedAt DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model FieldProvenance {
+  id              String           @id @default(uuid()) @db.Uuid
+  businessId      String           @db.Uuid
+  fieldKey        String // matches a BusinessProfile column; Surface-Map-tracked fields only
+  source          ProvenanceSource
+  setAt           DateTime         @default(now())
+  lastConfirmedAt DateTime?
+  confirmedVia    ConfirmedVia?
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, fieldKey])
+}
+
+model ConnectedAsset {
+  id              String          @id @default(uuid()) @db.Uuid
+  businessId      String          @db.Uuid
+  type            AssetType
+  url             String
+  label           String?
+  connectionState ConnectionState @default(declared)
+  verifiedAt      DateTime?
+  isPrimary       Boolean         @default(true)
+  removedAt       DateTime? // soft delete
+  createdAt       DateTime        @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, type])
+}
+
+model TaskState {
+  id          String      @id @default(uuid()) @db.Uuid
+  businessId  String      @db.Uuid
+  taskId      String // content string, NOT a foreign key
+  status      TaskStatus  @default(not_started)
+  skipReason  SkipReason?
+  notes       String?
+  completedAt DateTime?
+  updatedAt   DateTime    @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, taskId])
+}
+
+model GeneratedContent {
+  id            String   @id @default(uuid()) @db.Uuid
+  businessId    String   @db.Uuid
+  toolType      ToolType
+  inputSnapshot Json
+  output        Json // never overwritten
+  editedOutput  Json?
+  wasEdited     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model Decision {
+  id             String          @id @default(uuid()) @db.Uuid
+  businessId     String          @db.Uuid
+  context        DecisionContext
+  contextId      String
+  proposedAction String
+  outcome        DecisionOutcome
+  reason         String?
+  createdAt      DateTime        @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model Purchase {
+  id                    String         @id @default(uuid()) @db.Uuid
+  userId                String?        @db.Uuid // nulled on account deletion (§20.6)
+  stripeSessionId       String         @unique
+  stripePaymentIntentId String?
+  product               Product        @default(launch)
+  amountCents           Int // 7900 or 9900 — the credit always derives from this
+  status                PurchaseStatus @default(pending)
+  creditExpiresAt       DateTime? // paidAt + 90 days
+  creditRedeemedAt      DateTime? // set manually via runbook (§15.5)
+  createdAt             DateTime       @default(now())
+  paidAt                DateTime?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model ServiceLead {
+  id          String           @id @default(uuid()) @db.Uuid
+  businessId  String           @db.Uuid
+  placement   ServicePlacement
+  serviceType ServiceType      @default(website_build)
+  createdAt   DateTime         @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
