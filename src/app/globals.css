@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+/* GoBeeFound — extends the existing friendly small-business identity (§4).
+   Mobile-first (P13): 375px is the design width; tap targets ≥ 44px. */
+
+@theme {
+  --color-honey-50: #fff9e6;
+  --color-honey-100: #ffefbf;
+  --color-honey-400: #f5b800;
+  --color-honey-500: #e0a600;
+  --color-honey-600: #b98800;
+  --color-ink-900: #1f2328;
+  --color-ink-700: #454c54;
+  --color-ink-500: #6b737c;
+  --color-ink-300: #c9ced4;
+  --color-ink-100: #eef0f2;
+  --color-paper: #fbfbf9;
+  --color-good-500: #2f9e5f;
+  --color-warn-500: #d97706;
+  --color-danger-500: #c8342f;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --radius-card: 14px;
+}
+
+:root {
+  color-scheme: light; /* No dark mode in V1 (§3). */
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--color-paper);
+  color: var(--color-ink-900);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Every interactive control meets the 44px minimum (P13). */
+button,
+[role="button"],
+a.tap,
+input,
+select,
+textarea {
+  min-height: 44px;
+}
+
+/* Print stylesheet hooks (§16.1 — no PDF library). */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+}
