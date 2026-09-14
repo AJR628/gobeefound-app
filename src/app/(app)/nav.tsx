@@ -95,4 +95,5 @@ function Menu({ supportEmail }: { supportEmail?: string }) {
   );
 }
 
+export { Tabs as AppNavTabs, Menu as AppNavMenu };
 export const AppNav = { Tabs, Menu };
