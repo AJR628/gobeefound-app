@@ -1,77 +1,40 @@
-// §16.4 — the thin AI provider interface. Server-side only. Typed in, typed out, Zod-validated.
-// One retry on malformed output, then a plain failure. 30s timeout. No streaming. No model choice.
+// V4 §J — the single AI boundary the rest of the app talks to. Server-side only. Typed in, typed
+// out, Zod-validated, with usage and request ids returned alongside the data.
+//
+// Provider selection is an env switch so the OpenAI migration is reversible without a deploy:
+//   AI_PROVIDER=openai (default) | anthropic (legacy, one release only)
+import "server-only";
+import type { z } from "zod";
+import type { PromptParts, StructuredRequest, StructuredResult } from "./ai/types";
 
-import Anthropic from "@anthropic-ai/sdk";
-import { z } from "zod";
+export { AiError, GenerationError, isAiError, AI_USER_MESSAGES } from "./ai/errors";
+export type { AiErrorKind } from "./ai/errors";
+export { websiteCopySchema, descriptionsSchema, reviewRequestsSchema } from "./ai/schemas";
+export type { WebsiteCopy, Descriptions, ReviewRequests } from "./ai/schemas";
+export type { PromptParts, GenerationMeta, StructuredResult, StructuredRequest } from "./ai/types";
 
-const MODEL = "claude-sonnet-4-5";
-const TIMEOUT_MS = 30_000;
+export type AiProvider = "openai" | "anthropic";
 
-export const websiteCopySchema = z.object({
-  headline: z.string().min(1).max(200),
-  subheadline: z.string().min(1).max(400),
-  serviceBlurbs: z.array(z.object({ name: z.string().min(1), blurb: z.string().min(1).max(400) })).min(1).max(30),
-  about: z.string().min(1).max(2000),
-  callToAction: z.string().min(1).max(120),
-});
-export type WebsiteCopy = z.infer<typeof websiteCopySchema>;
-
-export const descriptionsSchema = z.object({
-  short: z.string().min(1).max(300),
-  google: z.string().min(1).max(750),
-  long: z.string().min(1).max(3000),
-});
-export type Descriptions = z.infer<typeof descriptionsSchema>;
-
-export const reviewRequestsSchema = z.object({
-  sms: z.string().min(1).max(200),
-  emailSubject: z.string().min(1).max(120),
-  emailBody: z.string().min(1).max(1500),
-  spokenLine: z.string().min(1).max(300),
-  negativeReply: z.string().min(1).max(1200),
-});
-export type ReviewRequests = z.infer<typeof reviewRequestsSchema>;
-
-let client: Anthropic | null = null;
-function anthropic(): Anthropic {
-  if (!client) client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: TIMEOUT_MS, maxRetries: 0 });
-  return client;
+export function aiProvider(): AiProvider {
+  return process.env.AI_PROVIDER === "anthropic" ? "anthropic" : "openai";
 }
 
-function extractJson(text: string): unknown {
-  const trimmed = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  const start = trimmed.indexOf("{");
-  const end = trimmed.lastIndexOf("}");
-  if (start === -1 || end === -1) throw new Error("no json");
-  return JSON.parse(trimmed.slice(start, end + 1));
+export interface GenerateOptions {
+  schemaName: string;
+  operation?: "routine" | "site";
+  maxOutputTokens?: number;
+  timeoutMs?: number;
+  /** Stable tenant key (business id). Hashed before use. */
+  userKey?: string;
 }
 
-export class GenerationError extends Error {
-  constructor(message = "We couldn't generate that just now. Please try again.") {
-    super(message);
-    this.name = "GenerationError";
+/** Runs the prompt through the configured provider. Throws AiError; never leaks provider detail. */
+export async function generateStructured<T>(prompt: PromptParts, schema: z.ZodType<T>, opts: GenerateOptions): Promise<StructuredResult<T>> {
+  const req: StructuredRequest<T> = { prompt, schema, ...opts };
+  if (aiProvider() === "anthropic") {
+    const { anthropicGenerateStructured } = await import("./ai/anthropic-legacy");
+    return anthropicGenerateStructured(req);
   }
-}
-
-/** Runs the prompt, parses JSON, validates against the schema. Retries exactly once on malformed output. */
-export async function generateStructured<T>(prompt: string, schema: z.ZodType<T>): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const res = await anthropic().messages.create({
-        model: MODEL,
-        max_tokens: 1500,
-        temperature: 0.4,
-        messages: [{ role: "user", content: prompt }],
-      });
-      const text = res.content.map((c) => (c.type === "text" ? c.text : "")).join("");
-      const parsed = schema.safeParse(extractJson(text));
-      if (parsed.success) return parsed.data;
-      lastError = parsed.error;
-    } catch (e) {
-      lastError = e;
-    }
-  }
-  void lastError;
-  throw new GenerationError();
+  const { openaiGenerateStructured } = await import("./ai/provider");
+  return openaiGenerateStructured(req);
 }
