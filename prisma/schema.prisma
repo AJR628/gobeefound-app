@@ -311,7 +311,7 @@ model Purchase {
   stripeSessionId       String         @unique
   stripePaymentIntentId String?
   product               Product        @default(launch)
-  amountCents           Int // 7900 or 9900 — the credit always derives from this
+  amountCents           Int // 7900 or 16900 — the credit always derives from this
   status                PurchaseStatus @default(pending)
   creditExpiresAt       DateTime? // paidAt + 90 days
   creditRedeemedAt      DateTime? // set manually via runbook (§15.5)

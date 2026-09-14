@@ -45,7 +45,7 @@ product, `America/Denver`).
 5. **Storage:** create a **private** bucket named per `SUPABASE_LOGO_BUCKET` (default `logos`).
 
 ### Stripe
-1. One product "GoBeeFound Launch" with **two one-time prices**: $79 (founding) and $99 (standard).
+1. One product "GoBeeFound Launch" with **two one-time prices**: $79 (founding) and $169 (standard).
    Put their IDs in `STRIPE_PRICE_ID_LAUNCH_FOUNDING` / `STRIPE_PRICE_ID_LAUNCH_STANDARD`.
 2. Set `LAUNCH_ACTIVE_PRICE=founding`. **Flip it to `standard` by hand** after roughly the first 50
    paying customers — there is deliberately no automatic counter and no scarcity UI (§4.1).

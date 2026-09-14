@@ -9,7 +9,7 @@ export function activePrice(): ActivePrice {
 }
 
 export function expectedAmountCents(price: ActivePrice): number {
-  return price === "standard" ? 9900 : 7900;
+  return price === "standard" ? 16900 : 7900;
 }
 
 export function priceIdFor(price: ActivePrice): string {

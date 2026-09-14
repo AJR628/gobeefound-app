@@ -5,11 +5,11 @@ describe("§4 / §15.5 credit math derives from amountCents", () => {
   const paidAt = new Date("2026-09-13T12:00:00Z");
   const base = { status: "paid" as const, paidAt, creditExpiresAt: creditExpiry(paidAt), creditRedeemedAt: null };
 
-  it("founding purchase → $79 credit; standard → $99", () => {
+  it("founding purchase → $79 credit; standard → $169", () => {
     expect(activeCredit({ ...base, amountCents: 7900 })?.amountCents).toBe(7900);
-    expect(activeCredit({ ...base, amountCents: 9900 })?.amountCents).toBe(9900);
+    expect(activeCredit({ ...base, amountCents: 16900 })?.amountCents).toBe(16900);
     expect(expectedAmountCents("founding")).toBe(7900);
-    expect(expectedAmountCents("standard")).toBe(9900);
+    expect(expectedAmountCents("standard")).toBe(16900);
   });
   it("expires 90 days after paidAt", () => {
     expect(creditExpiry(paidAt).toISOString()).toBe("2026-12-12T12:00:00.000Z");
@@ -22,7 +22,7 @@ describe("§4 / §15.5 credit math derives from amountCents", () => {
   });
   it("formats money without spurious cents", () => {
     expect(money(7900)).toBe("$79");
-    expect(money(9900)).toBe("$99");
+    expect(money(16900)).toBe("$169");
     expect(money(1050)).toBe("$10.50");
   });
 });

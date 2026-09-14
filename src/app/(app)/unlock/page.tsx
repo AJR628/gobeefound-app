@@ -21,6 +21,7 @@ export default async function UnlockPage({ searchParams }: { searchParams: Promi
   }
   const active = activePrice();
   const price = expectedAmountCents(active) / 100;
+  const standardPrice = expectedAmountCents("standard") / 100;
   await track(ctx.user.id, "unlock_viewed", { trigger: from ? "locked_task" : "module_complete", completedTaskCount: ctx.progress.completedRequired });
   const remaining = ctx.progress.denominator - ctx.progress.completedRequired;
 
@@ -34,8 +35,18 @@ export default async function UnlockPage({ searchParams }: { searchParams: Promi
       </div>
 
       <Card>
-        <p className="text-3xl font-bold tracking-tight">${price} <span className="text-base font-normal text-ink-500">once</span></p>
-        {active === "founding" && <p className="mt-1 text-sm text-ink-500">Founding price while we're still improving it.</p>}
+        {active === "founding" ? (
+          <>
+            <p className="text-sm font-semibold uppercase tracking-wide text-ink-500">Founding price</p>
+            <div className="mt-1 flex items-baseline gap-3">
+              <span className="text-lg text-ink-400 line-through" aria-label={`Standard price ${standardPrice}`}>${standardPrice}</span>
+              <p className="text-3xl font-bold tracking-tight">${price} <span className="text-base font-normal text-ink-500">once</span></p>
+            </div>
+            <p className="mt-1 text-sm text-ink-500">Founding price while we're still improving it.</p>
+          </>
+        ) : (
+          <p className="text-3xl font-bold tracking-tight">${price} <span className="text-base font-normal text-ink-500">once</span></p>
+        )}
         <ul className="mt-4 space-y-2 text-[15px]">
           <li>✓ Every step in all seven modules</li>
           <li>✓ Website Copy Builder, Description Generator, Review Request Kit</li>
