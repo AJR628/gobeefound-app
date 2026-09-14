@@ -38,6 +38,17 @@ export type AssetType = (typeof ASSET_TYPES)[number];
 export const TOOL_IDS = ["website_copy", "descriptions", "review_requests"] as const;
 export type ToolId = (typeof TOOL_IDS)[number];
 
+/**
+ * Which BusinessProfile columns each tool's APPROVED output may write (§13.1). This is the
+ * server-side source of truth for "save to Your Business" — the client never chooses the target.
+ * Content validation asserts every task's `canonicalFields` are producible by its `toolId`.
+ */
+export const TOOL_OUTPUT_FIELDS: Record<ToolId, readonly BusinessProfileField[]> = {
+  website_copy: ["longDescription"],
+  descriptions: ["shortDescription", "gbpDescription", "longDescription"],
+  review_requests: [],
+};
+
 export const SERVICE_PLACEMENTS = ["task_3_1", "task_3_4", "home_footer", "your_business_footer"] as const;
 export type ServicePlacement = (typeof SERVICE_PLACEMENTS)[number];
 

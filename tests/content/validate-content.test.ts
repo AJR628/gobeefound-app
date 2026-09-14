@@ -13,9 +13,20 @@ import {
   SURFACE_MAP,
   TASK_BY_ID,
   TOOL_IDS,
+  TOOL_OUTPUT_FIELDS,
   US_STATES,
   VERIFY_VARIANT_MAP,
 } from "@/content";
+
+/**
+ * Tasks whose declared canonicalFields are NOT yet producible by their tool. Each entry is a known,
+ * tracked defect — remove the entry when the tool is fixed. An empty object is the goal.
+ * 3.6: declares pageTitle/metaDescription but points at `descriptions`, which writes
+ *      shortDescription/gbpDescription/longDescription. Fixed by the website builder (Phase 4/5).
+ */
+const KNOWN_TOOL_FIELD_MISMATCH: Record<string, string> = {
+  "3.6": "descriptions tool cannot write pageTitle/metaDescription — fixed in Phase 4/5",
+};
 
 const taskIds = new Set(ALL_TASKS.map((t) => t.id));
 const profileFields = new Set<string>(BUSINESS_PROFILE_FIELDS);
@@ -72,6 +83,26 @@ describe("content: references resolve", () => {
       });
     });
   }
+
+  it("every task's canonicalFields are producible by its declared tool (V4 guardrail)", () => {
+    const offenders: string[] = [];
+    for (const t of ALL_TASKS) {
+      if (!t.toolId || t.canonicalFields.length === 0) continue;
+      const producible = new Set<string>(TOOL_OUTPUT_FIELDS[t.toolId]);
+      const missing = t.canonicalFields.filter((f) => !producible.has(f));
+      if (missing.length && !KNOWN_TOOL_FIELD_MISMATCH[t.id]) offenders.push(`${t.id}: ${missing.join(",")} not produced by ${t.toolId}`);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("known tool/field mismatches still exist (remove the entry once fixed)", () => {
+    for (const [id, note] of Object.entries(KNOWN_TOOL_FIELD_MISMATCH)) {
+      const t = TASK_BY_ID[id]!;
+      const producible = new Set<string>(TOOL_OUTPUT_FIELDS[t.toolId!]);
+      const stillBroken = t.canonicalFields.some((f) => !producible.has(f));
+      expect(stillBroken, `${id} is fixed — delete its KNOWN_TOOL_FIELD_MISMATCH entry (${note})`).toBe(true);
+    }
+  });
 
   it("only 3.4 and 4.2 support awaiting_verification (§18.2)", () => {
     const ids = ALL_TASKS.filter((t) => t.supportsAwaitingVerification).map((t) => t.id).sort();
