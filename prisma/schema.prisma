@@ -1,4 +1,5 @@
-// GoBeeFound V1 — §17.2. Exactly 11 models. See AGENTS.md before adding anything.
+// GoBeeFound — §17.2 as amended by docs/SPEC-V4-SCOPE-AMENDMENT.md. The model list is a CLOSED,
+// authorized set enforced by tests/guardrails/schema.test.ts. See AGENTS.md §17.1 before adding anything.
 
 generator client {
   provider      = "prisma-client-js"
@@ -138,7 +139,48 @@ enum ServiceType {
   website_build
 }
 
-// ---------- models (11) ----------
+// ---------- V4 §E — AI usage and allowance ----------
+
+/**
+ * What kind of AI work a call is. Drives the allowance bucket and cost reporting.
+ */
+enum AiOperationClass {
+  website_copy
+  descriptions
+  review_requests
+  section_rewrite
+  seo_meta
+  gbp_asset
+  site_draft
+  logo_image
+}
+
+/**
+ * The customer-facing budgets. builds = full website drafts; edits = everything small; logos = AI logo tries.
+ */
+enum AiBucket {
+  builds
+  edits
+  logos
+  managed_edits
+}
+
+enum AiUsageOutcome {
+  pending
+  ok
+  claims_rejected
+  contact_rejected
+  error
+}
+
+enum AiAllowanceSource {
+  launch_grant
+  operator
+  managed_period
+  purchase
+}
+
+// ---------- models (11 V1 + V4, see AGENTS.md §17.1) ----------
 
 model User {
   id           String       @id @db.Uuid // mirrors the Supabase Auth user id
@@ -163,7 +205,7 @@ model Business {
   launchedAt      DateTime?
   createdAt       DateTime        @default(now())
 
-  owner            User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner            User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   onboarding       OnboardingAnswers?
   profile          BusinessProfile?
   provenance       FieldProvenance[]
@@ -172,6 +214,9 @@ model Business {
   generatedContent GeneratedContent[]
   decisions        Decision[]
   serviceLeads     ServiceLead[]
+  aiUsage          AiUsage[]
+  aiAllowance      AiAllowance?
+  aiAdjustments    AiAllowanceAdjustment[]
 }
 
 model OnboardingAnswers {
@@ -287,9 +332,94 @@ model GeneratedContent {
   output        Json // never overwritten
   editedOutput  Json?
   wasEdited     Boolean  @default(false)
+  model         String? // V4 — resolved provider model id
+  promptVersion String? // V4 — PROMPT_VERSION at generation time
+  aiUsageId     String?  @db.Uuid // V4 — the ledger row that paid for this
   createdAt     DateTime @default(now())
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, createdAt])
+}
+
+/**
+ * V4 §E — append-only ledger: ONE row per AI attempt, including failures. Created `pending` BEFORE the
+ * model is called (the unique idempotency key makes a concurrent duplicate fail closed), finalized after.
+ * Cost and token fields live here, never on the allowance row the UI reads. Server-only writes.
+ */
+model AiUsage {
+  id                  String           @id @default(uuid()) @db.Uuid
+  businessId          String           @db.Uuid
+  generationId        String           @unique @db.Uuid // our correlation id; returned to the owner as a support reference
+  idempotencyKey      String // client-minted per intent, not per attempt
+  operation           AiOperationClass
+  bucket              AiBucket
+  outcome             AiUsageOutcome   @default(pending)
+  errorKind           String?
+  consumed            Boolean          @default(false) // true = counted against the allowance
+  provider            String?
+  model               String?
+  promptVersion       String?
+  inputTokens         Int?
+  outputTokens        Int?
+  cachedTokens        Int?
+  reasoningTokens     Int?
+  estimatedCostMicros Int? // USD micro-dollars from the server-side price table; null when the model is unpriced
+  durationMs          Int?
+  attempts            Int?
+  providerRequestId   String?
+  platformRequestId   String? // x-nf-request-id
+  generatedContentId  String?          @db.Uuid
+  createdAt           DateTime         @default(now())
+  finishedAt          DateTime?
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, idempotencyKey])
+  @@index([businessId, createdAt])
+  @@index([createdAt])
+}
+
+/**
+ * V4 §E — per-business budgets. Limits are the EFFECTIVE limits (operator-adjustable via
+ * AiAllowanceAdjustment). Reservation is a single conditional UPDATE, so concurrent requests cannot
+ * exceed a limit. The owner may read this row; only the server writes it. No cost or token fields here.
+ */
+model AiAllowance {
+  businessId         String    @id @db.Uuid
+  buildsLimit        Int       @default(5)
+  buildsUsed         Int       @default(0)
+  editsLimit         Int       @default(40)
+  editsUsed          Int       @default(0)
+  logosLimit         Int       @default(3)
+  logosUsed          Int       @default(0)
+  managedEditsLimit  Int       @default(10) // per Managed billing month (V4 §E); reset on invoice.paid
+  managedEditsUsed   Int       @default(0)
+  managedPeriodStart DateTime?
+  hourlyLimit        Int       @default(20) // short anti-abuse throttle across all buckets
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  business    Business                @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  adjustments AiAllowanceAdjustment[]
+}
+
+/**
+ * V4 §E — audit trail for every limit change (operator runbook today; purchasable packs later, not in this release).
+ */
+model AiAllowanceAdjustment {
+  id         String            @id @default(uuid()) @db.Uuid
+  businessId String            @db.Uuid
+  bucket     AiBucket
+  delta      Int
+  source     AiAllowanceSource
+  reason     String?
+  createdAt  DateTime          @default(now())
+
+  business  Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  allowance AiAllowance @relation(fields: [businessId], references: [businessId], onDelete: Cascade, map: "AiAllowanceAdjustment_allowance_fkey")
+
+  @@index([businessId, createdAt])
 }
 
 model Decision {

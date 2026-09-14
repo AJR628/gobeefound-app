@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FIELD_LABEL } from "@/lib/canonical";
 import { getPlanContext } from "@/lib/plan-context";
-import { missingFields, TOOL_BY_ROUTE, TOOL_META, TOOL_QUESTIONS } from "@/lib/generators";
+import { allowanceView, missingFields, TOOL_BY_ROUTE, TOOL_META, TOOL_QUESTIONS } from "@/lib/generators";
+import { readAllowance } from "@/lib/ai/allowance";
 import { GeneratorForm } from "./generator-form";
 
 export default async function ToolPage({ params }: { params: Promise<{ toolId: string }> }) {
@@ -27,6 +28,7 @@ export default async function ToolPage({ params }: { params: Promise<{ toolId: s
   }
 
   const missing = missingFields(tool, ctx.profile);
+  const allowance = allowanceView("edits", await readAllowance(ctx.business.id));
   const p = ctx.profile as unknown as Record<string, unknown>;
   // P16 — ask only what we don't already know.
   const questions = TOOL_QUESTIONS[tool].filter((q) => {
@@ -59,6 +61,8 @@ export default async function ToolPage({ params }: { params: Promise<{ toolId: s
           questions={questions}
           reviewLink={typeof p.reviewLink === "string" ? p.reviewLink : null}
           displayName={ctx.profile.displayName}
+          allowanceLabel={allowance.label}
+          allowanceExhausted={allowance.used >= allowance.limit}
         />
       )}
     </div>

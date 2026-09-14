@@ -93,8 +93,44 @@ entitlement derives to `free` automatically and no user data is deleted.
 `src/content/state-resources.ts`; update each `lastReviewed`. Porkbun announced a .com increase
 effective 2026-11-01 — the approximate price phrasing already absorbs it.
 
-Runbooks for AI allowance top-ups, cost reporting, Managed cancellation/expiry, unpublishing a
-site, and removing a custom domain are added in the phase that introduces each capability.
+**Raise a customer's AI allowance (V4 §E).** Founding-period increases are manual. Record the
+adjustment, then apply it — both in one transaction so the audit trail always matches the limit:
+
+```sql
+begin;
+insert into "AiAllowanceAdjustment" ("businessId","bucket","delta","source","reason")
+values ('<business uuid>', 'edits', 20, 'operator', 'founding tester — requested more edits');
+update "AiAllowance" set "editsLimit" = "editsLimit" + 20, "updatedAt" = now()
+ where "businessId" = '<business uuid>';
+commit;
+```
+Buckets: `builds` (`buildsLimit`), `edits` (`editsLimit`), `logos` (`logosLimit`).
+
+**AI cost and health report (V4 §E, plan §18).** Everything is in `AiUsage`; costs are estimates in
+USD micro-dollars from `src/lib/ai/pricing.ts`.
+
+```sql
+-- spend and outcomes per day, last 14 days
+select date_trunc('day',"createdAt") d, count(*) attempts,
+       count(*) filter (where outcome='ok') ok,
+       count(*) filter (where outcome='error') errors,
+       count(*) filter (where outcome in ('claims_rejected','contact_rejected')) rejected,
+       round(sum("estimatedCostMicros")/1e6::numeric, 4) est_usd,
+       percentile_cont(0.95) within group (order by "durationMs") p95_ms
+  from "AiUsage" where "createdAt" > now() - interval '14 days'
+ group by 1 order by 1 desc;
+
+-- failures by kind, last 24h (kind = AiError.kind; config/quota mean WE must act)
+select "errorKind", count(*) from "AiUsage"
+ where outcome='error' and "createdAt" > now() - interval '1 day' group by 1 order by 2 desc;
+
+-- one owner's support reference → the exact attempt
+select * from "AiUsage" where "generationId"::text like '<first 8 chars of the code>%';
+```
+Alert threshold to watch by hand until Phase 8: est_usd per day above $5, or any `config`/`quota` kind.
+
+Runbooks for Managed cancellation/expiry, unpublishing a site, and removing a custom domain are
+added in the phase that introduces each capability.
 
 ## Content status
 

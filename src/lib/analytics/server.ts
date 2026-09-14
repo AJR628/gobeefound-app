@@ -18,9 +18,12 @@ export const EVENT_PROPERTY_ALLOWLIST: Record<string, readonly string[]> = {
   milestone_reached: ["milestoneId", "daysSinceSignup"],
   unlock_viewed: ["trigger", "completedTaskCount"],
   purchase_completed: ["amountCents"],
-  generator_run: ["toolId"],
+  generator_run: ["toolId", "success", "operationClass", "replayed"],
   generator_output_edited: ["toolId", "fieldsEdited"],
   generator_output_copied: ["toolId"],
+  // V4 §E / §18 — AI health. Never a prompt, output, business name, or token count.
+  ai_generation_failed: ["operationClass", "errorKind"],
+  allowance_exhausted: ["bucket"],
   asset_declared: ["assetType"],
   asset_removed: ["assetType"],
   logo_uploaded: [],
