@@ -11,7 +11,7 @@ import { db } from "../db";
 import { AiError } from "./errors";
 
 export type Bucket = "builds" | "edits" | "logos" | "managed_edits";
-export type OperationClass = "website_copy" | "descriptions" | "review_requests" | "section_rewrite" | "seo_meta" | "gbp_asset" | "site_draft" | "logo_image";
+export type OperationClass = "website_copy" | "descriptions" | "review_requests" | "section_rewrite" | "seo_meta" | "gbp_asset" | "gbp_kit" | "site_draft" | "logo_image";
 
 export function bucketFor(op: OperationClass): Bucket {
   if (op === "site_draft") return "builds";

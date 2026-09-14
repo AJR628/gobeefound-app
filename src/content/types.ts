@@ -35,18 +35,30 @@ export type ReusableField = BusinessProfileField | "city" | "state";
 export const ASSET_TYPES = ["website", "gbp", "facebook", "instagram", "booking", "other"] as const;
 export type AssetType = (typeof ASSET_TYPES)[number];
 
-export const TOOL_IDS = ["website_copy", "descriptions", "review_requests"] as const;
+export const TOOL_IDS = ["website_copy", "descriptions", "review_requests", "seo_meta", "gbp_kit"] as const;
 export type ToolId = (typeof TOOL_IDS)[number];
 
+/** URL segment for each tool under /tools. Content-level so task pages and the API agree. */
+export const TOOL_ROUTES: Record<ToolId, string> = {
+  website_copy: "website-copy",
+  descriptions: "bio",
+  review_requests: "review-requests",
+  seo_meta: "page-title",
+  gbp_kit: "google-profile-kit",
+};
+
 /**
- * Which BusinessProfile columns each tool's APPROVED output may write (§13.1). This is the
+ * Which BusinessProfile columns each tool's APPROVED output may write (§13.1 / V4). This is the
  * server-side source of truth for "save to Your Business" — the client never chooses the target.
  * Content validation asserts every task's `canonicalFields` are producible by its `toolId`.
+ * Exactly ONE tool writes longDescription (website_copy) — plan §8a P5.
  */
 export const TOOL_OUTPUT_FIELDS: Record<ToolId, readonly BusinessProfileField[]> = {
-  website_copy: ["longDescription"],
-  descriptions: ["shortDescription", "gbpDescription", "longDescription"],
+  website_copy: ["longDescription", "services"],
+  descriptions: ["shortDescription"],
   review_requests: [],
+  seo_meta: ["pageTitle", "metaDescription"],
+  gbp_kit: ["gbpDescription", "services"],
 };
 
 export const SERVICE_PLACEMENTS = ["task_3_1", "task_3_4", "home_footer", "your_business_footer"] as const;

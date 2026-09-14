@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { MODULE_BY_ID, TASK_BY_ID } from "@/content";
+import { MODULE_BY_ID, TASK_BY_ID, TOOL_ROUTES } from "@/content";
+import { TOOL_META } from "@/lib/generators";
 import { getPlanContext } from "@/lib/plan-context";
 import { planTasksForModule } from "@/lib/plan";
 import { Collapsible } from "@/components/collapsible";
@@ -93,7 +94,7 @@ export default async function TaskPage({ params }: { params: Promise<{ taskId: s
           {task.id === "1.6" && <StateResources stateCode={ctx.business.state} />}
 
           {task.primaryCta.toolId ? (
-            <Link href={`/tools/${task.primaryCta.toolId.replace("_", "-")}`} className="tap flex h-13 w-full items-center justify-center rounded-xl bg-ink-900 text-base font-semibold text-white">
+            <Link href={`/tools/${TOOL_ROUTES[task.primaryCta.toolId]}`} className="tap flex h-13 w-full items-center justify-center rounded-xl bg-ink-900 text-base font-semibold text-white">
               {task.primaryCta.label}
             </Link>
           ) : task.primaryCta.href ? (
@@ -101,6 +102,12 @@ export default async function TaskPage({ params }: { params: Promise<{ taskId: s
               {task.primaryCta.label} ↗
             </a>
           ) : null}
+
+          {task.toolId && !task.primaryCta.toolId && (
+            <Link href={`/tools/${TOOL_ROUTES[task.toolId]}`} className="tap flex h-12 w-full items-center justify-center rounded-xl border border-ink-900 bg-white text-base font-semibold text-ink-900">
+              Open the {TOOL_META[task.toolId].name}
+            </Link>
+          )}
 
           <div className="space-y-2">
             {task.steps.length > 0 && (
