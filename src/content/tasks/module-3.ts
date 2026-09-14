@@ -218,13 +218,13 @@ export const MODULE_3_TASKS: TaskDefinition[] = [
     timeEstimate: "10 minutes",
     whyItMatters:
       "The page title is what shows in the browser tab and in Google's results. Most DIY sites leave it as \"Home\" — which tells nobody anything.",
-    whatYouNeed: ["Your website builder login."],
+    whatYouNeed: ["Your website builder login.", "Nothing else — the tool already knows your name, services, and area."],
     doThis:
-      "Use the Description Generator to draft a page title (your business name, what you do, and where — under about 60 characters) and a one-sentence description (under about 155). Paste them into your builder's page settings, usually under \"SEO\" or \"page settings.\"",
-    primaryCta: { label: "Draft with the Description Generator", toolId: "descriptions" },
+      "Open Page Title & Description. It drafts a title (your business name, what you do, and where — under about 60 characters) and a one-sentence description (under about 155), sized to fit. Edit, save, then paste both into your builder's page settings, usually under \"SEO\" or \"page settings.\"",
+    primaryCta: { label: "Open Page Title & Description", toolId: "seo_meta" },
     steps: [
       { text: "Title: \"Dave's Aurora Detail — Mobile Car Detailing in Aurora, CO\". Name, what, where. Nothing else." },
-      { text: "Description: one plain sentence saying what you do, where, and how to reach you. It's what shows under your name in Google results." },
+      { text: "Description: one plain sentence saying what you do and where. It's what shows under your name in Google results — your phone number goes on the page itself, not here." },
       { text: "In your builder, find the home page's settings — often labelled SEO, page settings, or metadata — and paste both in." },
     ],
     troubleshooting: [],
@@ -234,8 +234,8 @@ export const MODULE_3_TASKS: TaskDefinition[] = [
     ],
     alternatives: [],
     canonicalFields: ["pageTitle", "metaDescription"],
-    reusesFields: ["displayName", "serviceAreas", "services", "phone"],
-    toolId: "descriptions",
+    reusesFields: ["displayName", "serviceAreas", "services"],
+    toolId: "seo_meta",
     dependsOn: ["3.5"],
     sourceLinks: [],
     lastReviewed: "2026-09-13",

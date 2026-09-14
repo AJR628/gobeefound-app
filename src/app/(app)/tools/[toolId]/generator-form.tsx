@@ -18,24 +18,41 @@ type Question = { key: string; label: string; forField?: string };
 type Output = Record<string, unknown>;
 type Allowance = { label: string; used: number; limit: number };
 
-const FIELD_ORDER: Record<ToolId, { key: string; label: string; multiline?: boolean; savesToProfile?: boolean }[]> = {
+type TextField = { key: string; label: string; multiline?: boolean; savesToProfile?: boolean; maxChars?: number; hint?: string };
+/** A list of { [nameKey], [textKey] } items. Editable lists write into Your Business; read-only lists are copy-only. */
+type ListField = { key: string; label: string; nameKey: string; textKey: string; editable: boolean; savesToProfile?: boolean; intro?: string };
+
+const TEXT_FIELDS: Record<ToolId, TextField[]> = {
   website_copy: [
     { key: "headline", label: "Headline" },
     { key: "subheadline", label: "Subheadline" },
     { key: "about", label: "About", multiline: true, savesToProfile: true },
     { key: "callToAction", label: "Call to action" },
   ],
-  descriptions: [
-    { key: "short", label: "Short (social bios)", multiline: true, savesToProfile: true },
-    { key: "google", label: "Google Business Profile", multiline: true, savesToProfile: true },
-    { key: "long", label: "Website", multiline: true, savesToProfile: true },
-  ],
+  descriptions: [{ key: "short", label: "Bio (Facebook & Instagram)", multiline: true, savesToProfile: true, maxChars: 250 }],
   review_requests: [
     { key: "sms", label: "Text message", multiline: true },
     { key: "emailSubject", label: "Email subject" },
     { key: "emailBody", label: "Email", multiline: true },
     { key: "spokenLine", label: "What to say at the end of a job" },
     { key: "negativeReply", label: "Reply to a negative review", multiline: true },
+  ],
+  seo_meta: [
+    { key: "pageTitle", label: "Page title", savesToProfile: true, maxChars: 60, hint: "Shows in the browser tab and as the blue link in Google." },
+    { key: "metaDescription", label: "Page description", multiline: true, savesToProfile: true, maxChars: 155, hint: "The sentence under your name in Google results." },
+  ],
+  gbp_kit: [{ key: "description", label: "Google Business Profile description", multiline: true, savesToProfile: true, maxChars: 750 }],
+};
+
+const LIST_FIELDS: Record<ToolId, ListField[]> = {
+  website_copy: [{ key: "serviceBlurbs", label: "Services", nameKey: "name", textKey: "blurb", editable: true, savesToProfile: true }],
+  descriptions: [],
+  review_requests: [],
+  seo_meta: [],
+  gbp_kit: [
+    { key: "serviceDescriptions", label: "Services — one line each", nameKey: "name", textKey: "description", editable: true, savesToProfile: true },
+    { key: "categorySuggestions", label: "Categories to look for", nameKey: "name", textKey: "why", editable: false, intro: "Type each of these into Google's category box and pick the closest match Google offers. Google decides what's available — these are starting points." },
+    { key: "photoChecklist", label: "Photo checklist", nameKey: "shot", textKey: "caption", editable: false, intro: "Real photos from your phone. Copy a caption when you upload each one." },
   ],
 };
 
@@ -92,14 +109,13 @@ export function GeneratorForm({
       if (!res.ok || !j.ok || !j.output || !j.id) {
         setError(j.error ?? "We couldn't generate that just now. Please try again.");
         if (j.generationId && res.status >= 500) setSupportRef(j.generationId.slice(0, 8));
-        // A failed click keeps its key so a retry of the SAME intent is idempotent; a 4xx means the input
-        // must change, so the next click is a new intent.
+        // A 5xx/429 keeps its key so retrying the SAME intent is idempotent; a 4xx means the input must change.
         if (res.status < 500 && res.status !== 429) setIdemKey(newKey());
         return;
       }
       setResult({ id: j.id, output: j.output });
       setEdited(j.output);
-      setIdemKey(newKey()); // the next "Start over" is a new intent
+      setIdemKey(newKey());
     });
   }
 
@@ -110,6 +126,12 @@ export function GeneratorForm({
       if (!r.ok) return setError(r.error ?? "Couldn't save.");
       setSaved(true);
     });
+  }
+
+  function updateListItem(list: ListField, i: number, value: string) {
+    const items = [...((edited[list.key] as Record<string, string>[]) ?? [])];
+    items[i] = { ...items[i]!, [list.textKey]: value };
+    setEdited({ ...edited, [list.key]: items });
   }
 
   const allAnswered = questions.every((q) => (answers[q.key] ?? "").trim().length > 0);
@@ -140,32 +162,66 @@ export function GeneratorForm({
 
   return (
     <div className="space-y-4">
-      <p className="rounded-xl bg-honey-50 px-4 py-3 text-sm text-ink-700">Read this over before you publish it — make sure it's accurate for your business. Edit anything that doesn't sound like you. Editing by hand is always free.</p>
+      <p className="rounded-xl bg-honey-50 px-4 py-3 text-sm text-ink-700">Read this over before you use it — make sure every word is true for your business. Edit anything that doesn't sound like you. Editing by hand is always free.</p>
 
-      {tool === "website_copy" && Array.isArray(edited.serviceBlurbs) && (
-        <section className="rounded-2xl border border-ink-100 bg-white p-4">
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">Services</h2>
-          <ul className="space-y-3">
-            {(edited.serviceBlurbs as { name: string; blurb: string }[]).map((s, i) => (
-              <li key={i}>
-                <div className="flex items-center justify-between gap-3"><span className="text-[15px] font-medium">{s.name}</span><CopyButton value={s.blurb} /></div>
-                <textarea rows={2} value={s.blurb} onChange={(e) => { const next = [...(edited.serviceBlurbs as { name: string; blurb: string }[])]; next[i] = { ...s, blurb: e.target.value }; setEdited({ ...edited, serviceBlurbs: next }); }} className="mt-1 w-full rounded-lg border border-ink-100 px-3 py-2 text-[15px] focus:border-ink-900 focus:outline-none" />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      {LIST_FIELDS[tool].filter((l) => l.editable).map((list) => {
+        const items = (edited[list.key] as Record<string, string>[] | undefined) ?? [];
+        if (!items.length) return null;
+        return (
+          <section key={list.key} className="rounded-2xl border border-ink-100 bg-white p-4">
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">{list.label}</h2>
+            <ul className="space-y-3">
+              {items.map((item, i) => (
+                <li key={i}>
+                  <div className="flex items-center justify-between gap-3"><span className="text-[15px] font-medium">{item[list.nameKey]}</span><CopyButton value={item[list.textKey] ?? ""} /></div>
+                  <textarea rows={2} value={item[list.textKey] ?? ""} onChange={(e) => updateListItem(list, i, e.target.value)} className="mt-1 w-full rounded-lg border border-ink-100 px-3 py-2 text-[15px] focus:border-ink-900 focus:outline-none" />
+                </li>
+              ))}
+            </ul>
+            {list.savesToProfile && <p className="mt-2 text-xs text-ink-500">Saved to your services in Your Business when you save.</p>}
+          </section>
+        );
+      })}
 
-      {FIELD_ORDER[tool].map((f) => (
-        <section key={f.key} className="rounded-2xl border border-ink-100 bg-white p-4">
-          <div className="mb-1 flex items-center justify-between gap-3">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-500">{f.label}</h2>
-            <CopyButton value={String(edited[f.key] ?? "")} event={{ name: "generator_output_copied", props: { toolId: tool } }} />
-          </div>
-          <textarea rows={f.multiline ? 4 : 1} value={String(edited[f.key] ?? "")} onChange={(e) => setEdited({ ...edited, [f.key]: e.target.value })} className="w-full rounded-lg border border-ink-100 px-3 py-2 text-[15px] focus:border-ink-900 focus:outline-none" />
-          {f.savesToProfile && <p className="mt-1 text-xs text-ink-500">Saved to Your Business when you save.</p>}
-        </section>
-      ))}
+      {TEXT_FIELDS[tool].map((f) => {
+        const value = String(edited[f.key] ?? "");
+        const over = f.maxChars !== undefined && value.length > f.maxChars;
+        return (
+          <section key={f.key} className="rounded-2xl border border-ink-100 bg-white p-4">
+            <div className="mb-1 flex items-center justify-between gap-3">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-500">{f.label}</h2>
+              <CopyButton value={value} event={{ name: "generator_output_copied", props: { toolId: tool } }} />
+            </div>
+            <textarea rows={f.multiline ? 4 : 1} value={value} onChange={(e) => setEdited({ ...edited, [f.key]: e.target.value })} className="w-full rounded-lg border border-ink-100 px-3 py-2 text-[15px] focus:border-ink-900 focus:outline-none" />
+            <div className="mt-1 flex items-center justify-between gap-3 text-xs text-ink-500">
+              <span>{f.hint ?? (f.savesToProfile ? "Saved to Your Business when you save." : "")}</span>
+              {f.maxChars !== undefined && <span className={over ? "text-bad-500" : ""}>{value.length}/{f.maxChars}{over ? " — may get cut off" : ""}</span>}
+            </div>
+          </section>
+        );
+      })}
+
+      {LIST_FIELDS[tool].filter((l) => !l.editable).map((list) => {
+        const items = (edited[list.key] as Record<string, string>[] | undefined) ?? [];
+        if (!items.length) return null;
+        return (
+          <section key={list.key} className="rounded-2xl border border-ink-100 bg-white p-4">
+            <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-500">{list.label}</h2>
+            {list.intro && <p className="mb-3 text-sm text-ink-700">{list.intro}</p>}
+            <ul className="space-y-3">
+              {items.map((item, i) => (
+                <li key={i} className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[15px] font-medium">{item[list.nameKey]}</p>
+                    <p className="text-sm text-ink-700">{item[list.textKey]}</p>
+                  </div>
+                  <CopyButton value={list.key === "categorySuggestions" ? (item[list.nameKey] ?? "") : (item[list.textKey] ?? "")} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })}
 
       {tool === "review_requests" && reviewLink && (
         <section className="rounded-2xl border border-ink-100 bg-white p-4">

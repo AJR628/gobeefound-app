@@ -1,6 +1,6 @@
 // V4 §J — prompt construction: two channels, fenced owner data, no contact data in the model's job.
 import { describe, expect, it } from "vitest";
-import { DESCRIPTIONS_PROMPT, factsBlock, PROMPT_VERSION, REVIEW_LINK_PLACEHOLDER, REVIEW_REQUESTS_PROMPT, sanitizeFact, WEBSITE_COPY_PROMPT, type BusinessFacts } from "@/content/prompts";
+import { DESCRIPTIONS_PROMPT, factsBlock, GBP_KIT_PROMPT, PROMPT_VERSION, REVIEW_LINK_PLACEHOLDER, REVIEW_REQUESTS_PROMPT, sanitizeFact, SEO_META_PROMPT, WEBSITE_COPY_PROMPT, type BusinessFacts } from "@/content/prompts";
 
 const facts: BusinessFacts = {
   displayName: "Mike's Junk Removal",
@@ -43,6 +43,20 @@ describe("prompt channels", () => {
     const p = REVIEW_REQUESTS_PROMPT(facts);
     expect(p.instructions).toContain(REVIEW_LINK_PLACEHOLDER);
     expect(p.input).not.toContain("g.page");
+  });
+  it("the new tools use the same two-channel shape and never receive contact data", () => {
+    for (const p of [SEO_META_PROMPT(facts), GBP_KIT_PROMPT(facts)]) {
+      expect(p.instructions).toContain("Rules, which are absolute");
+      expect(p.input).toContain("<facts>");
+      expect(p.input).not.toContain("303-555-0100");
+      expect(p.input).not.toContain("mikesjunk.com");
+    }
+  });
+  it("the Google kit never claims GoBeeFound acts on the profile, and frames categories as suggestions", () => {
+    const p = GBP_KIT_PROMPT(facts);
+    expect(p.instructions).toMatch(/BY THE OWNER|by hand/i);
+    expect(p.instructions).toMatch(/do not state that Google will accept/i);
+    expect(p.instructions).not.toMatch(/\bwe (have )?(created|verified|connected|published)\b/i);
   });
   it("has a dated prompt version", () => {
     expect(PROMPT_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}\.\d+$/);

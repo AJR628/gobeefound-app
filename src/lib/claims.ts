@@ -1,6 +1,6 @@
-// §13.1 / P7 / P10 — deterministic post-generation scanner. The model is constrained by prompt;
-// THIS is the enforcement. Any output that asserts a credential, guarantee, or superlative the
-// owner never provided is rejected before it is ever rendered. Pure function; adversarially tested.
+// §13.1 / P7 / P10 / V4 — deterministic post-generation scanner. The model is constrained by prompt;
+// THIS is the enforcement. Any output that asserts a credential, guarantee, or superlative the owner
+// never provided is rejected before it is ever rendered. Pure function; adversarially tested.
 
 export interface ClaimContext {
   /** Free-text facts the owner actually provided (differentiators, idealCustomer, etc.). */
@@ -28,14 +28,34 @@ export interface ClaimViolation {
   match: string;
 }
 
+const STOPWORDS = new Set(["and", "the", "for", "with", "your", "our", "of", "in", "on", "to", "a", "an", "is", "are", "we", "you"]);
+
+/** Words that carry the claim. Numbers always count; short function words never do. */
+function claimTokens(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9+%/ ]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w && !STOPWORDS.has(w) && (/\d/.test(w) || w.length > 3));
+}
+
+/**
+ * V4 (plan §8c S4): the owner "said it" only when EVERY claim-bearing word of the matched phrase appears
+ * in their own text — numbers included. Saying "licensed" does not unlock "licensed and insured";
+ * "12 years" does not unlock "15 years". Simple word stems are tolerated (license/licensed, estimate/estimates).
+ */
 function ownerSaidIt(match: string, ctx: ClaimContext): boolean {
-  const hay = ctx.ownerText.join(" \n ").toLowerCase();
+  const hay = ` ${ctx.ownerText.join(" \n ").toLowerCase().replace(/[^a-z0-9+%/ ]/g, " ")} `;
   const needle = match.toLowerCase().replace(/\s+/g, " ").trim();
   if (!needle) return false;
-  if (hay.includes(needle)) return true;
-  // Allow when the owner used the head word (e.g. "licensed") anywhere in their own text.
-  const head = needle.split(" ")[0]!;
-  return head.length > 3 && hay.includes(head);
+  if (hay.includes(` ${needle} `)) return true;
+  const tokens = claimTokens(needle);
+  if (tokens.length === 0) return false;
+  return tokens.every((t) => {
+    if (/\d/.test(t)) return new RegExp(`(^|\\D)${t.replace(/[+%/]/g, "\\$&")}(\\D|$)`).test(hay);
+    const stem = t.replace(/(ed|es|s|ing)$/, "");
+    return stem.length >= 3 && new RegExp(`\\b${stem}\\w{0,3}\\b`).test(hay);
+  });
 }
 
 /** Returns every unsupported claim found in `text`. Empty array = clean. */
@@ -72,4 +92,11 @@ export function validateGeneratedOutput(output: Record<string, unknown>, ctx: Cl
   };
   visit(output);
   return violations;
+}
+
+/** What the owner sees when a draft still contains a claim after the repair attempt. Actionable, not a dead end. */
+export function claimsGuidance(v: ClaimViolation): string {
+  if (v.kind === "superlative") return `We left out "${v.match}" — we never use words like that, because customers don't trust them.`;
+  if (v.kind === "keyword stuffing") return `The draft repeated "${v.match}" too often. Please try again.`;
+  return `We left out "${v.match}" because you haven't told us it's true. If it is, add it in Your Business under "Why you", then try again.`;
 }

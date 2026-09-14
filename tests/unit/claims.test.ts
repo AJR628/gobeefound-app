@@ -43,6 +43,26 @@ describe("owner-provided facts are allowed", () => {
   });
 });
 
+describe("V4 S4 — owner text unlocks only the exact claim, not the whole family", () => {
+  it("saying 'licensed' does NOT unlock 'licensed and insured'", () => {
+    const ctx: ClaimContext = { ...bare, ownerText: ["Licensed handyman"] };
+    const kinds = findUnsupportedClaims("Licensed and insured handyman in Aurora.", ctx).map((v) => v.kind);
+    expect(kinds).toContain("insurance");
+  });
+  it("saying '12 years' does NOT unlock '15 years'", () => {
+    const ctx: ClaimContext = { ...bare, ownerText: ["12 years of experience"] };
+    expect(findUnsupportedClaims("Over 15 years of experience.", ctx).map((v) => v.kind)).toContain("years in business");
+  });
+  it("saying 'free quotes' does NOT unlock 'free estimates'", () => {
+    const ctx: ClaimContext = { ...bare, ownerText: ["Free quotes on request"] };
+    expect(findUnsupportedClaims("Call for a free estimate.", ctx).map((v) => v.kind)).toContain("pricing");
+  });
+  it("still allows the exact claim the owner made, in either word order or tense", () => {
+    const ctx: ClaimContext = { ...bare, ownerText: ["We are insured and bonded", "Same-day service most weeks"] };
+    expect(findUnsupportedClaims("Bonded and insured. Same-day service when the schedule allows.", ctx)).toEqual([]);
+  });
+});
+
 describe("keyword stuffing", () => {
   it("flags more than two city mentions in one field", () => {
     expect(isKeywordStuffed("Aurora handyman. Aurora repairs. Aurora drywall. Serving Aurora.", bare)).toBe(true);

@@ -1,24 +1,27 @@
 // §13 / V4 §E §J — the structured generators. Input assembled from canonical values (P16); missing-field
 // detection before any model call; every call runs through the metered wrapper (idempotency, throttle,
-// atomic allowance, ledger); deterministic claim scanning after (P10); contact data injected by us, never
-// written by the model; both versions persisted (§13.1).
+// atomic allowance, ledger); deterministic claim scanning after (P10) with ONE repair attempt and
+// actionable guidance; contact data injected by us, never written by the model; both versions persisted.
 
-import { ARCHETYPE_BY_ID, FIELD_SOURCE_TASK, TOOL_OUTPUT_FIELDS, type BusinessProfileField, type ToolId } from "@/content";
-import { DESCRIPTIONS_PROMPT, REVIEW_LINK_PLACEHOLDER, REVIEW_REQUESTS_PROMPT, WEBSITE_COPY_PROMPT, type BusinessFacts } from "@/content/prompts";
+import { ARCHETYPE_BY_ID, FIELD_SOURCE_TASK, TOOL_OUTPUT_FIELDS, TOOL_ROUTES, type BusinessProfileField, type ToolId } from "@/content";
+import { DESCRIPTIONS_PROMPT, GBP_KIT_PROMPT, REVIEW_LINK_PLACEHOLDER, REVIEW_REQUESTS_PROMPT, SEO_META_PROMPT, WEBSITE_COPY_PROMPT, type BusinessFacts, type PromptParts } from "@/content/prompts";
+import type { z } from "zod";
 import { db } from "./db";
 import { formatHours, type Service } from "./canonical";
-import { AiError, descriptionsSchema, generateStructured, reviewRequestsSchema, websiteCopySchema, type AiErrorKind, type GenerationMeta } from "./ai";
+import { AiError, descriptionsSchema, gbpKitSchema, generateStructured, reviewRequestsSchema, seoMetaSchema, websiteCopySchema, type AiErrorKind, type GenerationMeta } from "./ai";
 import { formatAllowance, type AllowanceSnapshot, type Bucket } from "./ai/allowance";
 import { runMetered, type MeteredOutcome } from "./ai/metered";
-import { validateGeneratedOutput, type ClaimContext } from "./claims";
+import { claimsGuidance, validateGeneratedOutput, type ClaimContext, type ClaimViolation } from "./claims";
 
-export const TOOL_ROUTE: Record<ToolId, string> = { website_copy: "website-copy", descriptions: "descriptions", review_requests: "review-requests" };
-export const TOOL_BY_ROUTE: Record<string, ToolId> = { "website-copy": "website_copy", descriptions: "descriptions", "review-requests": "review_requests" };
+export const TOOL_ROUTE: Record<ToolId, string> = TOOL_ROUTES;
+export const TOOL_BY_ROUTE: Record<string, ToolId> = Object.fromEntries(Object.entries(TOOL_ROUTES).map(([k, v]) => [v, k as ToolId]));
 
 export const TOOL_META: Record<ToolId, { name: string; blurb: string; usedBy: string[] }> = {
   website_copy: { name: "Website Copy Builder", blurb: "A headline, service blurbs, an About paragraph, and a call to action — from what you've already told us.", usedBy: ["3.2"] },
-  descriptions: { name: "Description Generator", blurb: "Three lengths of the same honest description: social bio, Google profile, website.", usedBy: ["4.4", "6.2", "3.6"] },
+  descriptions: { name: "Bio Writer", blurb: "A short, honest bio for your Facebook and Instagram profiles.", usedBy: ["6.2"] },
   review_requests: { name: "Review Request Kit", blurb: "A text, an email, a spoken line, a QR code, and a printable card — with your link already in them.", usedBy: ["5.2", "5.4"] },
+  seo_meta: { name: "Page Title & Description", blurb: "The title in the browser tab and the sentence under your name in Google — sized to fit.", usedBy: ["3.6"] },
+  gbp_kit: { name: "Google Profile Kit", blurb: "Your Google description, a line for each service, categories to look for, and a photo checklist — all ready to paste.", usedBy: ["4.3", "4.4", "4.5"] },
 };
 
 /** Which canonical fields each tool needs before it can run (§13.1 — the model is never called with placeholders). */
@@ -26,6 +29,8 @@ export const TOOL_REQUIRED_FIELDS: Record<ToolId, BusinessProfileField[]> = {
   website_copy: ["displayName", "services", "serviceAreas"],
   descriptions: ["displayName", "services", "serviceAreas"],
   review_requests: ["displayName", "reviewLink"],
+  seo_meta: ["displayName", "services", "serviceAreas"],
+  gbp_kit: ["displayName", "services", "serviceAreas"],
 };
 
 /** Questions a tool may ask when the answer isn't already known (P16 — ask only what we don't know). */
@@ -35,21 +40,26 @@ export const TOOL_QUESTIONS: Record<ToolId, { key: string; label: string; forFie
     { key: "differentiators", label: "Why should someone choose you? (one reason per line)", forField: "differentiators" },
     { key: "visitorAction", label: "What should a visitor do next — call, text, or request a quote?" },
   ],
-  descriptions: [
+  descriptions: [{ key: "idealCustomer", label: "Who do you help most?", forField: "idealCustomer" }],
+  review_requests: [],
+  seo_meta: [],
+  gbp_kit: [
     { key: "idealCustomer", label: "Who do you help most?", forField: "idealCustomer" },
     { key: "differentiators", label: "Why should someone choose you? (one reason per line)", forField: "differentiators" },
   ],
-  review_requests: [],
 };
 
 /**
  * Server-side mapping from canonical field → output key for "save to Your Business". The client never
  * chooses the destination (plan §8c S1). Every target must be in TOOL_OUTPUT_FIELDS (content-validated).
+ * `services` targets are arrays of { name, blurb|description } merged into the canonical services by name.
  */
 export const TOOL_SAVE_MAP: Record<ToolId, Partial<Record<BusinessProfileField, string>>> = {
-  website_copy: { longDescription: "about" },
-  descriptions: { shortDescription: "short", gbpDescription: "google", longDescription: "long" },
+  website_copy: { longDescription: "about", services: "serviceBlurbs" },
+  descriptions: { shortDescription: "short" },
   review_requests: {},
+  seo_meta: { pageTitle: "pageTitle", metaDescription: "metaDescription" },
+  gbp_kit: { gbpDescription: "description", services: "serviceDescriptions" },
 };
 for (const tool of Object.keys(TOOL_SAVE_MAP) as ToolId[]) {
   for (const field of Object.keys(TOOL_SAVE_MAP[tool])) {
@@ -134,8 +144,27 @@ export function injectReviewLink<T extends Record<string, unknown>>(output: T, r
   return visit(output) as T;
 }
 
+/**
+ * Merge generated per-service text into the canonical services list BY NAME. Never adds a service the
+ * owner didn't list (the model must not invent services); never drops one. Exported for tests.
+ */
+export function mergeServiceDescriptions(existing: Service[], generated: unknown): Service[] {
+  if (!Array.isArray(generated)) return existing;
+  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+  const byName = new Map<string, string>();
+  for (const g of generated as Record<string, unknown>[]) {
+    const name = typeof g?.name === "string" ? g.name : null;
+    const text = typeof g?.description === "string" ? g.description : typeof g?.blurb === "string" ? g.blurb : null;
+    if (name && text && text.trim()) byName.set(norm(name), text.trim().slice(0, 200));
+  }
+  return existing.map((s) => {
+    const t = byName.get(norm(s.name));
+    return t ? { ...s, description: t } : s;
+  });
+}
+
 // ---------------------------------------------------------------------------------------------
-// Result shape (what the route returns to the browser + server-only telemetry it strips)
+// Result shape (what the route returns to the browser)
 // ---------------------------------------------------------------------------------------------
 
 export interface AllowanceView {
@@ -151,16 +180,34 @@ export function allowanceView(bucket: Bucket, snap: AllowanceSnapshot): Allowanc
 }
 
 export type GenerateResult =
-  | { ok: true; id: string; output: Record<string, unknown>; generationId: string; allowance: AllowanceView; replayed: boolean; telemetry: { model: string | null; durationMs: number | null } }
-  | { ok: false; error: string; status: number; generationId?: string; kind?: AiErrorKind; missing?: { field: BusinessProfileField; taskId: string }[]; allowance?: AllowanceView; telemetry?: { model: string | null; durationMs: number | null } };
+  | { ok: true; id: string; output: Record<string, unknown>; generationId: string; allowance: AllowanceView; replayed: boolean }
+  | { ok: false; error: string; status: number; generationId?: string; kind?: AiErrorKind; missing?: { field: BusinessProfileField; taskId: string }[]; allowance?: AllowanceView };
 
 export interface GenerateContext {
   idempotencyKey?: string | null;
   platformRequestId?: string | null;
 }
 
-function logGeneration(tool: ToolId, businessId: string, generationId: string, meta: GenerationMeta, outcome: "ok" | "claims" | "contact_data") {
+function logGeneration(tool: ToolId, businessId: string, generationId: string, meta: GenerationMeta, outcome: "ok" | "claims" | "contact_data" | "claims_repaired") {
   console.info(JSON.stringify({ ts: new Date().toISOString(), evt: "generator_run", tool, businessId, generationId, outcome, provider: meta.provider, model: meta.model, promptVersion: meta.promptVersion, requestId: meta.requestId, inputTokens: meta.inputTokens, outputTokens: meta.outputTokens, reasoningTokens: meta.reasoningTokens, durationMs: meta.durationMs, attempts: meta.attempts }));
+}
+
+const TOOL_SPECS: Record<ToolId, { schema: z.ZodType<Record<string, unknown>>; prompt: (f: BusinessFacts, answers: Record<string, string>) => PromptParts; maxOutputTokens: number }> = {
+  website_copy: { schema: websiteCopySchema as z.ZodType<Record<string, unknown>>, prompt: (f, a) => WEBSITE_COPY_PROMPT(f, { visitorAction: a.visitorAction || f.preferredContact || "call" }), maxOutputTokens: 2_000 },
+  descriptions: { schema: descriptionsSchema as z.ZodType<Record<string, unknown>>, prompt: (f) => DESCRIPTIONS_PROMPT(f), maxOutputTokens: 600 },
+  review_requests: { schema: reviewRequestsSchema as z.ZodType<Record<string, unknown>>, prompt: (f) => REVIEW_REQUESTS_PROMPT(f), maxOutputTokens: 1_500 },
+  seo_meta: { schema: seoMetaSchema as z.ZodType<Record<string, unknown>>, prompt: (f) => SEO_META_PROMPT(f), maxOutputTokens: 400 },
+  gbp_kit: { schema: gbpKitSchema as z.ZodType<Record<string, unknown>>, prompt: (f) => GBP_KIT_PROMPT(f), maxOutputTokens: 3_500 },
+};
+
+function sumMeta(a: GenerationMeta, b: GenerationMeta): GenerationMeta {
+  const add = (x: number | null, y: number | null) => (x === null && y === null ? null : (x ?? 0) + (y ?? 0));
+  return { ...b, inputTokens: add(a.inputTokens, b.inputTokens), outputTokens: add(a.outputTokens, b.outputTokens), cachedTokens: add(a.cachedTokens, b.cachedTokens), reasoningTokens: add(a.reasoningTokens, b.reasoningTokens), durationMs: a.durationMs + b.durationMs, attempts: a.attempts + b.attempts };
+}
+
+/** Exported for tests: the repair hint appended to the DATA channel after a claims violation. */
+export function claimsRepairHint(violations: ClaimViolation[]): string {
+  return `\n\nThe previous draft included claims the owner never made. Remove them entirely and do not replace them with similar claims: ${violations.map((v) => `${v.kind}: "${v.match}"`).join("; ")}.`;
 }
 
 export async function runGenerator(
@@ -175,36 +222,31 @@ export async function runGenerator(
 
   const facts = buildFacts(business, profile, answers);
   const claimCtx = claimContext(facts);
-  const opts = { userKey: business.id, operation: "routine" as const, schemaName: tool };
+  const spec = TOOL_SPECS[tool];
+  const opts = { userKey: business.id, operation: "routine" as const, schemaName: tool, maxOutputTokens: spec.maxOutputTokens };
 
   const result = await runMetered<Record<string, unknown>>({ businessId: business.id, operation: tool, idempotencyKey: ctx.idempotencyKey, platformRequestId: ctx.platformRequestId }, async (generationId): Promise<MeteredOutcome<Record<string, unknown>>> => {
-    let output: Record<string, unknown>;
-    let meta: GenerationMeta;
-    if (tool === "website_copy") {
-      const r = await generateStructured(WEBSITE_COPY_PROMPT(facts, { visitorAction: answers.visitorAction || facts.preferredContact || "call" }), websiteCopySchema, opts);
-      output = r.data;
-      meta = r.meta;
-    } else if (tool === "descriptions") {
-      const r = await generateStructured(DESCRIPTIONS_PROMPT(facts), descriptionsSchema, opts);
-      output = r.data;
-      meta = r.meta;
-    } else {
-      const r = await generateStructured(REVIEW_REQUESTS_PROMPT(facts), reviewRequestsSchema, opts);
-      output = r.data;
-      meta = r.meta;
+    const prompt = spec.prompt(facts, answers);
+    let { data: output, meta } = await generateStructured(prompt, spec.schema, opts);
+
+    // P10 — deterministic enforcement, with ONE repair attempt (plan §8g U4) before giving up.
+    let violations = validateGeneratedOutput(output, claimCtx);
+    if (violations.length) {
+      const repaired = await generateStructured({ instructions: prompt.instructions, input: prompt.input + claimsRepairHint(violations) }, spec.schema, opts);
+      meta = sumMeta(meta, repaired.meta);
+      output = repaired.data;
+      violations = validateGeneratedOutput(output, claimCtx);
+      if (!violations.length) logGeneration(tool, business.id, generationId, meta, "claims_repaired");
+    }
+    if (violations.length) {
+      logGeneration(tool, business.id, generationId, meta, "claims");
+      return { ok: false, kind: "claims", meta, userMessage: claimsGuidance(violations[0]!) };
     }
 
     // The model must not write contact data; we inject it (V4 §D rule 3).
     if (findGeneratedContactData(output)) {
       logGeneration(tool, business.id, generationId, meta, "contact_data");
       return { ok: false, kind: "contact", meta, userMessage: new AiError("schema").userMessage };
-    }
-
-    // P10 — deterministic enforcement. Reject anything the prompt failed to prevent.
-    const violations = validateGeneratedOutput(output, claimCtx);
-    if (violations.length) {
-      logGeneration(tool, business.id, generationId, meta, "claims");
-      return { ok: false, kind: "claims", meta, userMessage: `The draft made a claim we can't back up (${violations[0]!.kind}: "${violations[0]!.match}"). Please try again.` };
     }
 
     if (tool === "review_requests" && facts.reviewLink) output = injectReviewLink(output, facts.reviewLink);
@@ -233,7 +275,7 @@ export async function runGenerator(
   });
 
   if (result.ok) {
-    return { ok: true, id: result.generatedContentId, output: result.data, generationId: result.generationId, allowance: allowanceView(result.bucket, result.allowance), replayed: result.replayed, telemetry: { model: null, durationMs: null } };
+    return { ok: true, id: result.generatedContentId, output: result.data, generationId: result.generationId, allowance: allowanceView(result.bucket, result.allowance), replayed: result.replayed };
   }
   return {
     ok: false,

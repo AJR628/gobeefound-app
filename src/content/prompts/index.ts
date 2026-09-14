@@ -5,7 +5,7 @@
 //                  after generation (src/lib/claims.ts); the prompt is guidance, the scanner is the law.
 // Output SHAPE is enforced by strict JSON Schema at the provider, so prompts describe meaning, not JSON.
 
-export const PROMPT_VERSION = "2026-09-14.2";
+export const PROMPT_VERSION = "2026-09-14.3";
 
 export interface PromptParts {
   instructions: string;
@@ -75,13 +75,12 @@ Task: write website copy for a one-page site.
   input: `${factsBlock(f)}\nWhat the owner wants a visitor to do next: ${sanitizeFact(extra.visitorAction)}`,
 });
 
+/** Task 6.2 — the social bio. */
 export const DESCRIPTIONS_PROMPT = (f: BusinessFacts): PromptParts => ({
   instructions: `${HOUSE_RULES}
 
-Task: write three descriptions of the same business.
-- short: under 250 characters — a social media bio.
-- google: under 750 characters — a Google Business Profile description; plain, no keyword stuffing, no promotional language, no links.
-- long: 3–5 sentences — a website about section, first person ("we").`,
+Task: write one short bio for the business's social profiles.
+- short: under 250 characters. What they do, where, and who for. Plain, first person ("we"). No hashtags.`,
   input: factsBlock(f),
 });
 
@@ -94,6 +93,28 @@ Task: write review-request messages. Never offer anything in exchange for a revi
 - emailBody: 3–4 short sentences, includes the placeholder once, first person.
 - spokenLine: one sentence the owner can say at the end of a job.
 - negativeReply: a calm 2–4 sentence public reply template to a negative review: acknowledge, one fact if needed, offer a call. No arguing.`,
+  input: factsBlock(f),
+});
+
+/** Task 3.6 — page title and search description. */
+export const SEO_META_PROMPT = (f: BusinessFacts): PromptParts => ({
+  instructions: `${HOUSE_RULES}
+
+Task: write the home page's title and search description.
+- pageTitle: "Business name — what they do in City, ST". Under 60 characters. Name, what, where; nothing else. No slogans.
+- metaDescription: ONE plain sentence, under 155 characters, saying what they do and where, written for a person deciding whether to click. No phone number, no web address, no list of every service.`,
+  input: factsBlock(f),
+});
+
+/** Tasks 4.3–4.5 — the Google Profile Kit. All of it is pasted into Google BY THE OWNER. */
+export const GBP_KIT_PROMPT = (f: BusinessFacts): PromptParts => ({
+  instructions: `${HOUSE_RULES}
+
+Task: prepare text the owner will paste into their Google Business Profile by hand. Google removes descriptions that are promotional, stuffed with keywords, or contain links or phone numbers, so keep everything plain and factual.
+- description: under 750 characters. What they do, where, who for, and the owner's own reasons customers choose them. First person ("we"). No links, no phone numbers, no offers.
+- serviceDescriptions: one entry per listed service, in the order given, name exactly as listed; each description under 200 characters saying what the service covers in plain words. No prices.
+- categorySuggestions: up to 3 names of business categories as they commonly appear in Google's business category list, most specific first (for example "Handyman", "Junk removal service"), each with one plain sentence on why it fits. These are suggestions for the owner to look up in Google's own picker; do not state that Google will accept or has accepted any category.
+- photoChecklist: 6 to 8 specific photos this particular business could take with a phone (for example "your vehicle with the name visible", "a finished job from the customer's doorway"), each with a caption under 120 characters. Real photos only — never suggest stock images. Captions must not contain claims from the prohibited list.`,
   input: factsBlock(f),
 });
 

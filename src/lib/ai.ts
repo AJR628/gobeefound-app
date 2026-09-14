@@ -9,8 +9,8 @@ import type { PromptParts, StructuredRequest, StructuredResult } from "./ai/type
 
 export { AiError, GenerationError, isAiError, AI_USER_MESSAGES } from "./ai/errors";
 export type { AiErrorKind } from "./ai/errors";
-export { websiteCopySchema, descriptionsSchema, reviewRequestsSchema } from "./ai/schemas";
-export type { WebsiteCopy, Descriptions, ReviewRequests } from "./ai/schemas";
+export { websiteCopySchema, descriptionsSchema, reviewRequestsSchema, seoMetaSchema, gbpKitSchema } from "./ai/schemas";
+export type { WebsiteCopy, Descriptions, ReviewRequests, SeoMeta, GbpKit } from "./ai/schemas";
 export type { PromptParts, GenerationMeta, StructuredResult, StructuredRequest } from "./ai/types";
 
 export type AiProvider = "openai" | "anthropic";

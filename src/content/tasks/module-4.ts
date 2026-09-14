@@ -140,7 +140,7 @@ export const MODULE_4_TASKS: TaskDefinition[] = [
       { heading: "Name", text: "Exactly as saved in Your Business. Nothing added." },
       {
         heading: "Primary category",
-        text: "Choose what your business IS — \"Handyman,\" \"Auto detailing service,\" \"Plumber.\" Add secondary categories only for genuine additional services. Check what top-ranking competitors in your city use.",
+        text: "Choose what your business IS — \"Handyman,\" \"Auto detailing service,\" \"Plumber.\" The Google Profile Kit below suggests a few names to look for in Google's list; type each into Google's category box and pick the closest match it offers. Add secondary categories only for genuine additional services.",
       },
       {
         heading: "Address — customers come to you",
@@ -169,6 +169,7 @@ export const MODULE_4_TASKS: TaskDefinition[] = [
     alternatives: [],
     canonicalFields: ["streetAddress", "hideAddress"],
     reusesFields: ["displayName", "serviceAreas", "city", "state"],
+    toolId: "gbp_kit",
     dependsOn: ["4.1"],
     sourceLinks: [
       { label: "Google — Service-area businesses", href: "https://support.google.com/business/answer/9157481" },
@@ -188,14 +189,14 @@ export const MODULE_4_TASKS: TaskDefinition[] = [
       "A complete profile converts. This is what a customer scans in the ten seconds before choosing you or the listing below you — and every value is already saved, ready to paste.",
     whatYouNeed: ["Nothing new. Everything below is already in Your Business."],
     doThis:
-      "Work down your profile's Info section and paste in each value from the list below: hours, phone, website, services. Then use the Description Generator for your 750-character description — it's built from facts you've already given us — and paste that in too.",
-    primaryCta: { label: "Draft your description", toolId: "descriptions" },
+      "Work down your profile's Info section and paste in each value from the list below: hours, phone, website. Then open the Google Profile Kit — it drafts your 750-character description and a plain line for each service from facts you've already given us. Edit, save, and paste those in too.",
+    primaryCta: { label: "Open the Google Profile Kit", toolId: "gbp_kit" },
     steps: [
       { text: "Hours: paste the same hours you set in Module 1. If they differ from your website, customers notice." },
       { text: "Phone: your business number. The same one, everywhere." },
       { text: "Website: your domain. Google's own campaign URL builder lets you add tracking so you can see clicks from your profile separately in analytics — optional." },
-      { text: "Services: add each service from your list. One line each; no prices required." },
-      { text: "Description: paste the generated one. Up to 750 characters, plain, no keyword stuffing — Google rejects promotional or stuffed descriptions." },
+      { text: "Services: add each service from your list, with the one-line description from the kit. No prices required." },
+      { text: "Description: paste the one from the kit. Up to 750 characters, plain, no keyword stuffing — Google rejects promotional or stuffed descriptions." },
     ],
     troubleshooting: [],
     mistakes: [
@@ -203,9 +204,9 @@ export const MODULE_4_TASKS: TaskDefinition[] = [
       "Different hours on Google and your website.",
     ],
     alternatives: [],
-    canonicalFields: ["gbpDescription"],
+    canonicalFields: ["gbpDescription", "services"],
     reusesFields: ["hours", "phone", "domain", "services", "serviceAreas"],
-    toolId: "descriptions",
+    toolId: "gbp_kit",
     dependsOn: ["4.1"],
     sourceLinks: [
       { label: "Google — Edit your business information", href: "https://support.google.com/business/answer/3039617" },
@@ -224,18 +225,19 @@ export const MODULE_4_TASKS: TaskDefinition[] = [
       "Profiles with photos get more calls and more direction requests. You already took the photos in Module 2 — this is just uploading them.",
     whatYouNeed: ["The photo set from Module 2, on your phone."],
     doThis:
-      "From your phone, open your profile and add photos: your logo (or a clean shot of your name), a cover photo of your vehicle or your best work, then the rest of the set. Ten is a good start; add a few new ones every month.",
+      "From your phone, open your profile and add photos: your logo (or a clean shot of your name), a cover photo of your vehicle or your best work, then the rest. The Google Profile Kit below lists specific shots for your kind of work, with a caption for each. Ten is a good start; add a few new ones every month.",
     primaryCta: { label: "Open your profile to add photos", href: "https://business.google.com/" },
     steps: [
       { text: "Logo: your logo if you have one; otherwise a clean photo of your signage or name." },
       { text: "Cover: your strongest single image — the vehicle or a finished job." },
-      { text: "Then: you at work, before-and-afters, finished results, your face." },
+      { text: "Then work down the kit's checklist: you at work, before-and-afters, finished results, your face. Use its captions or your own." },
     ],
     troubleshooting: [],
     mistakes: ["Stock photos. Google can detect them and customers can tell.", "Uploading once and never again. Fresh photos signal an active business."],
     alternatives: [],
     canonicalFields: [],
     reusesFields: [],
+    toolId: "gbp_kit",
     dependsOn: ["4.1"],
     sourceLinks: [
       { label: "Google — Photo guidelines", href: "https://support.google.com/business/answer/6103862" },

@@ -24,9 +24,7 @@ import {
  * 3.6: declares pageTitle/metaDescription but points at `descriptions`, which writes
  *      shortDescription/gbpDescription/longDescription. Fixed by the website builder (Phase 4/5).
  */
-const KNOWN_TOOL_FIELD_MISMATCH: Record<string, string> = {
-  "3.6": "descriptions tool cannot write pageTitle/metaDescription — fixed in Phase 4/5",
-};
+const KNOWN_TOOL_FIELD_MISMATCH: Record<string, string> = {};
 
 const taskIds = new Set(ALL_TASKS.map((t) => t.id));
 const profileFields = new Set<string>(BUSINESS_PROFILE_FIELDS);
@@ -84,11 +82,13 @@ describe("content: references resolve", () => {
     });
   }
 
-  it("every task's canonicalFields are producible by its declared tool (V4 guardrail)", () => {
+  it("every tool-driven task's canonicalFields are producible by its tool (V4 guardrail)", () => {
+    // Applies where the tool is the task's PRIMARY action. A task whose primary action is external (e.g.
+    // 4.3's Google settings) may still offer a tool as a helper while its canonicalFields are owner-entered.
     const offenders: string[] = [];
     for (const t of ALL_TASKS) {
-      if (!t.toolId || t.canonicalFields.length === 0) continue;
-      const producible = new Set<string>(TOOL_OUTPUT_FIELDS[t.toolId]);
+      if (!t.primaryCta.toolId || t.canonicalFields.length === 0) continue;
+      const producible = new Set<string>(TOOL_OUTPUT_FIELDS[t.primaryCta.toolId]);
       const missing = t.canonicalFields.filter((f) => !producible.has(f));
       if (missing.length && !KNOWN_TOOL_FIELD_MISMATCH[t.id]) offenders.push(`${t.id}: ${missing.join(",")} not produced by ${t.toolId}`);
     }
@@ -98,7 +98,7 @@ describe("content: references resolve", () => {
   it("known tool/field mismatches still exist (remove the entry once fixed)", () => {
     for (const [id, note] of Object.entries(KNOWN_TOOL_FIELD_MISMATCH)) {
       const t = TASK_BY_ID[id]!;
-      const producible = new Set<string>(TOOL_OUTPUT_FIELDS[t.toolId!]);
+      const producible = new Set<string>(TOOL_OUTPUT_FIELDS[t.primaryCta.toolId!]);
       const stillBroken = t.canonicalFields.some((f) => !producible.has(f));
       expect(stillBroken, `${id} is fixed — delete its KNOWN_TOOL_FIELD_MISMATCH entry (${note})`).toBe(true);
     }
