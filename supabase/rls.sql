@@ -57,6 +57,17 @@ create policy "servicelead_owner_all" on "ServiceLead" for all using (private.ow
 alter table "Purchase" enable row level security;
 create policy "purchase_owner_select" on "Purchase" for select using ("userId" = auth.uid());
 
+-- V4 §E — AI ledger and allowance. The owner may READ their own rows (the UI shows "32 AI edits left");
+-- ONLY the server writes them. No insert/update/delete policy exists for any Supabase role.
+alter table "AiUsage" enable row level security;
+create policy "aiusage_owner_select" on "AiUsage" for select using (private.owns_business("businessId"));
+
+alter table "AiAllowance" enable row level security;
+create policy "aiallowance_owner_select" on "AiAllowance" for select using (private.owns_business("businessId"));
+
+alter table "AiAllowanceAdjustment" enable row level security;
+create policy "aiadjustment_owner_select" on "AiAllowanceAdjustment" for select using (private.owns_business("businessId"));
+
 -- Prisma's own bookkeeping table: RLS on, no policies = not reachable over REST. Prisma is unaffected.
 alter table "_prisma_migrations" enable row level security;
 

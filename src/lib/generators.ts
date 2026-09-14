@@ -1,12 +1,15 @@
-// §13 / V4 §J — the structured generators. Input assembled from canonical values (P16); missing-field
-// detection before any model call; deterministic claim scanning after (P10); contact data injected by
-// us, never written by the model; both versions persisted (§13.1).
+// §13 / V4 §E §J — the structured generators. Input assembled from canonical values (P16); missing-field
+// detection before any model call; every call runs through the metered wrapper (idempotency, throttle,
+// atomic allowance, ledger); deterministic claim scanning after (P10); contact data injected by us, never
+// written by the model; both versions persisted (§13.1).
 
 import { ARCHETYPE_BY_ID, FIELD_SOURCE_TASK, TOOL_OUTPUT_FIELDS, type BusinessProfileField, type ToolId } from "@/content";
 import { DESCRIPTIONS_PROMPT, REVIEW_LINK_PLACEHOLDER, REVIEW_REQUESTS_PROMPT, WEBSITE_COPY_PROMPT, type BusinessFacts } from "@/content/prompts";
 import { db } from "./db";
 import { formatHours, type Service } from "./canonical";
-import { AiError, descriptionsSchema, generateStructured, isAiError, reviewRequestsSchema, websiteCopySchema, type GenerationMeta } from "./ai";
+import { AiError, descriptionsSchema, generateStructured, reviewRequestsSchema, websiteCopySchema, type AiErrorKind, type GenerationMeta } from "./ai";
+import { formatAllowance, type AllowanceSnapshot, type Bucket } from "./ai/allowance";
+import { runMetered, type MeteredOutcome } from "./ai/metered";
 import { validateGeneratedOutput, type ClaimContext } from "./claims";
 
 export const TOOL_ROUTE: Record<ToolId, string> = { website_copy: "website-copy", descriptions: "descriptions", review_requests: "review-requests" };
@@ -40,7 +43,7 @@ export const TOOL_QUESTIONS: Record<ToolId, { key: string; label: string; forFie
 };
 
 /**
- * Server-side mapping from output key → canonical field for "save to Your Business". The client never
+ * Server-side mapping from canonical field → output key for "save to Your Business". The client never
  * chooses the destination (plan §8c S1). Every target must be in TOOL_OUTPUT_FIELDS (content-validated).
  */
 export const TOOL_SAVE_MAP: Record<ToolId, Partial<Record<BusinessProfileField, string>>> = {
@@ -131,12 +134,33 @@ export function injectReviewLink<T extends Record<string, unknown>>(output: T, r
   return visit(output) as T;
 }
 
-export type GenerateResult =
-  | { ok: true; id: string; output: Record<string, unknown> }
-  | { ok: false; error: string; status: number; missing?: { field: BusinessProfileField; taskId: string }[]; requestId?: string | null };
+// ---------------------------------------------------------------------------------------------
+// Result shape (what the route returns to the browser + server-only telemetry it strips)
+// ---------------------------------------------------------------------------------------------
 
-function logGeneration(tool: ToolId, businessId: string, meta: GenerationMeta, outcome: "ok" | "claims" | "contact_data") {
-  console.info(JSON.stringify({ ts: new Date().toISOString(), evt: "generator_run", tool, businessId, outcome, provider: meta.provider, model: meta.model, promptVersion: meta.promptVersion, requestId: meta.requestId, inputTokens: meta.inputTokens, outputTokens: meta.outputTokens, reasoningTokens: meta.reasoningTokens, durationMs: meta.durationMs, attempts: meta.attempts }));
+export interface AllowanceView {
+  bucket: Bucket;
+  used: number;
+  limit: number;
+  /** "32 AI edits left" — the only allowance wording the owner ever sees. */
+  label: string;
+}
+
+export function allowanceView(bucket: Bucket, snap: AllowanceSnapshot): AllowanceView {
+  return { bucket, used: snap[bucket].used, limit: snap[bucket].limit, label: formatAllowance(bucket, snap) };
+}
+
+export type GenerateResult =
+  | { ok: true; id: string; output: Record<string, unknown>; generationId: string; allowance: AllowanceView; replayed: boolean; telemetry: { model: string | null; durationMs: number | null } }
+  | { ok: false; error: string; status: number; generationId?: string; kind?: AiErrorKind; missing?: { field: BusinessProfileField; taskId: string }[]; allowance?: AllowanceView; telemetry?: { model: string | null; durationMs: number | null } };
+
+export interface GenerateContext {
+  idempotencyKey?: string | null;
+  platformRequestId?: string | null;
+}
+
+function logGeneration(tool: ToolId, businessId: string, generationId: string, meta: GenerationMeta, outcome: "ok" | "claims" | "contact_data") {
+  console.info(JSON.stringify({ ts: new Date().toISOString(), evt: "generator_run", tool, businessId, generationId, outcome, provider: meta.provider, model: meta.model, promptVersion: meta.promptVersion, requestId: meta.requestId, inputTokens: meta.inputTokens, outputTokens: meta.outputTokens, reasoningTokens: meta.reasoningTokens, durationMs: meta.durationMs, attempts: meta.attempts }));
 }
 
 export async function runGenerator(
@@ -144,68 +168,81 @@ export async function runGenerator(
   business: { id: string; trade: keyof typeof ARCHETYPE_BY_ID; city: string; state: string },
   profile: ProfileRow,
   answers: Record<string, string>,
+  ctx: GenerateContext = {},
 ): Promise<GenerateResult> {
   const missing = missingFields(tool, profile);
   if (missing.length) return { ok: false, error: "A few details are missing.", status: 422, missing };
 
   const facts = buildFacts(business, profile, answers);
-  const ctx = claimContext(facts);
-  const opts = { userKey: business.id, operation: "routine" as const };
+  const claimCtx = claimContext(facts);
+  const opts = { userKey: business.id, operation: "routine" as const, schemaName: tool };
 
-  let output: Record<string, unknown>;
-  let meta: GenerationMeta;
-  try {
+  const result = await runMetered<Record<string, unknown>>({ businessId: business.id, operation: tool, idempotencyKey: ctx.idempotencyKey, platformRequestId: ctx.platformRequestId }, async (generationId): Promise<MeteredOutcome<Record<string, unknown>>> => {
+    let output: Record<string, unknown>;
+    let meta: GenerationMeta;
     if (tool === "website_copy") {
-      const r = await generateStructured(WEBSITE_COPY_PROMPT(facts, { visitorAction: answers.visitorAction || facts.preferredContact || "call" }), websiteCopySchema, { ...opts, schemaName: "website_copy" });
+      const r = await generateStructured(WEBSITE_COPY_PROMPT(facts, { visitorAction: answers.visitorAction || facts.preferredContact || "call" }), websiteCopySchema, opts);
       output = r.data;
       meta = r.meta;
     } else if (tool === "descriptions") {
-      const r = await generateStructured(DESCRIPTIONS_PROMPT(facts), descriptionsSchema, { ...opts, schemaName: "descriptions" });
+      const r = await generateStructured(DESCRIPTIONS_PROMPT(facts), descriptionsSchema, opts);
       output = r.data;
       meta = r.meta;
     } else {
-      const r = await generateStructured(REVIEW_REQUESTS_PROMPT(facts), reviewRequestsSchema, { ...opts, schemaName: "review_requests" });
+      const r = await generateStructured(REVIEW_REQUESTS_PROMPT(facts), reviewRequestsSchema, opts);
       output = r.data;
       meta = r.meta;
     }
-  } catch (e) {
-    if (isAiError(e)) return { ok: false, error: e.userMessage, status: e.httpStatus, requestId: e.detail.requestId ?? null };
-    console.error(JSON.stringify({ ts: new Date().toISOString(), evt: "generator_run", tool, businessId: business.id, outcome: "unexpected", internal: String((e as Error)?.message ?? e).slice(0, 300) }));
-    const fallback = new AiError("unknown");
-    return { ok: false, error: fallback.userMessage, status: fallback.httpStatus };
-  }
 
-  // The model must not write contact data; we inject it (V4 §D rule 3).
-  const contact = findGeneratedContactData(output);
-  if (contact) {
-    logGeneration(tool, business.id, meta, "contact_data");
-    return { ok: false, error: new AiError("schema").userMessage, status: 502, requestId: meta.requestId };
-  }
+    // The model must not write contact data; we inject it (V4 §D rule 3).
+    if (findGeneratedContactData(output)) {
+      logGeneration(tool, business.id, generationId, meta, "contact_data");
+      return { ok: false, kind: "contact", meta, userMessage: new AiError("schema").userMessage };
+    }
 
-  // P10 — deterministic enforcement. Reject anything the prompt failed to prevent.
-  const violations = validateGeneratedOutput(output, ctx);
-  if (violations.length) {
-    logGeneration(tool, business.id, meta, "claims");
-    return { ok: false, error: `The draft made a claim we can't back up (${violations[0]!.kind}: "${violations[0]!.match}"). Please try again.`, status: 422, requestId: meta.requestId };
-  }
+    // P10 — deterministic enforcement. Reject anything the prompt failed to prevent.
+    const violations = validateGeneratedOutput(output, claimCtx);
+    if (violations.length) {
+      logGeneration(tool, business.id, generationId, meta, "claims");
+      return { ok: false, kind: "claims", meta, userMessage: `The draft made a claim we can't back up (${violations[0]!.kind}: "${violations[0]!.match}"). Please try again.` };
+    }
 
-  if (tool === "review_requests" && facts.reviewLink) output = injectReviewLink(output, facts.reviewLink);
-  logGeneration(tool, business.id, meta, "ok");
+    if (tool === "review_requests" && facts.reviewLink) output = injectReviewLink(output, facts.reviewLink);
+    logGeneration(tool, business.id, generationId, meta, "ok");
 
-  // Persist the owner-supplied answers that map to canonical fields (P16 — they entered it once).
-  const patch: Record<string, unknown> = {};
-  for (const q of TOOL_QUESTIONS[tool]) {
-    if (q.forField && answers[q.key]) patch[q.forField] = q.forField === "differentiators" ? answers[q.key]!.split("\n").map((s) => s.trim()).filter(Boolean) : answers[q.key];
-  }
-  if (Object.keys(patch).length) {
-    const { saveCanonicalFields } = await import("./canonical");
-    await saveCanonicalFields(business.id, patch, "owner_entered");
-  }
-
-  const row = await db.generatedContent.create({
-    data: { businessId: business.id, toolType: tool, inputSnapshot: { facts, answers, promptVersion: meta.promptVersion, model: meta.model, requestId: meta.requestId } as object, output: output as object },
+    return {
+      ok: true,
+      data: output,
+      meta,
+      persist: async (aiUsageId) => {
+        // Persist the owner-supplied answers that map to canonical fields (P16 — they entered it once).
+        const patch: Record<string, unknown> = {};
+        for (const q of TOOL_QUESTIONS[tool]) {
+          if (q.forField && answers[q.key]) patch[q.forField] = q.forField === "differentiators" ? answers[q.key]!.split("\n").map((s) => s.trim()).filter(Boolean) : answers[q.key];
+        }
+        if (Object.keys(patch).length) {
+          const { saveCanonicalFields } = await import("./canonical");
+          await saveCanonicalFields(business.id, patch, "owner_entered");
+        }
+        const row = await db.generatedContent.create({
+          data: { businessId: business.id, toolType: tool, inputSnapshot: { facts, answers, generationId } as object, output: output as object, model: meta.model, promptVersion: meta.promptVersion, aiUsageId },
+        });
+        return row.id;
+      },
+    };
   });
-  return { ok: true, id: row.id, output };
+
+  if (result.ok) {
+    return { ok: true, id: result.generatedContentId, output: result.data, generationId: result.generationId, allowance: allowanceView(result.bucket, result.allowance), replayed: result.replayed, telemetry: { model: null, durationMs: null } };
+  }
+  return {
+    ok: false,
+    error: result.userMessage,
+    status: result.status,
+    generationId: result.generationId,
+    kind: result.kind,
+    allowance: result.allowance ? allowanceView(result.bucket, result.allowance) : undefined,
+  };
 }
 
 /** Save the owner's edited version. `output` is never overwritten (§13.1). Edits write a Decision row. */
