@@ -7,6 +7,7 @@ import { runGenerator, TOOL_BY_ROUTE } from "@/lib/generators";
 import { track } from "@/lib/analytics/server";
 
 // §18.1 /api/generate/[toolId] — requires launch entitlement. Rate-limited per business (§16.6).
+// Phase 3 replaces the count-based limit with atomic allowance reservation + idempotency.
 
 const RATE_LIMIT_PER_HOUR = 20;
 const answersSchema = z.record(z.string(), z.string().max(1000)).default({});
@@ -27,7 +28,10 @@ export async function POST(request: Request, ctx: { params: Promise<{ toolId: st
   if (!body.success) return NextResponse.json({ error: "Check your answers." }, { status: 400 });
 
   const result = await runGenerator(tool, business, profile, body.data);
-  if (!result.ok) return NextResponse.json(result, { status: result.missing ? 422 : 502 });
+  if (!result.ok) {
+    // requestId is a support reference only; never provider detail.
+    return NextResponse.json({ ok: false, error: result.error, missing: result.missing, requestId: result.requestId ?? undefined }, { status: result.status });
+  }
   await track(user.id, "generator_run", { toolId: tool });
   return NextResponse.json(result);
 }
