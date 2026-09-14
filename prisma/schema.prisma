@@ -132,9 +132,10 @@ enum PurchaseStatus {
 
 enum ServicePlacement {
   task_3_1
-  task_3_4
+  task_3_4 // retired in V4 (no offer mid-build); value kept because Postgres enums cannot drop values cheaply
   home_footer
   your_business_footer
+  builder_entry // V4 §L — "Have GoBeeFound do it for you — $900" beside "Build it with GoBeeFound"
 }
 
 enum ServiceType {
@@ -220,6 +221,8 @@ model Business {
   aiUsage          AiUsage[]
   aiAllowance      AiAllowance?
   aiAdjustments    AiAllowanceAdjustment[]
+  siteDraft        SiteDraft?
+  siteVersions     SiteVersion[]
 }
 
 model OnboardingAnswers {
@@ -405,6 +408,39 @@ model AiAllowance {
 
   business    Business                @relation(fields: [businessId], references: [id], onDelete: Cascade)
   adjustments AiAllowanceAdjustment[]
+}
+
+/**
+ * V4 §D — the mutable working website. One per business. `spec` is a SiteDraftSpec (setup + copy +
+ * per-section approval). Owner-private: never read by a public renderer.
+ */
+model SiteDraft {
+  businessId  String    @id @db.Uuid
+  spec        Json
+  lastBuiltAt DateTime?
+  approvedAt  DateTime? // when the current copy was last approved into a SiteVersion
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+/**
+ * V4 §D/§G — an immutable, approved snapshot: setup + copy + the PUBLIC facts frozen at approval time.
+ * This is the only thing a public renderer or an export ever reads. Never updated; superseded by a new row.
+ */
+model SiteVersion {
+  id            String   @id @default(uuid()) @db.Uuid
+  businessId    String   @db.Uuid
+  versionNumber Int
+  spec          Json // SiteVersionSpec
+  contactEmail  String? // owner-confirmed destination for the Managed contact form (V4 §H)
+  createdAt     DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, versionNumber])
+  @@index([businessId, createdAt])
 }
 
 /**

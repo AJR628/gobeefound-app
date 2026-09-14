@@ -97,6 +97,10 @@ export default async function TaskPage({ params }: { params: Promise<{ taskId: s
             <Link href={`/tools/${TOOL_ROUTES[task.primaryCta.toolId]}`} className="tap flex h-13 w-full items-center justify-center rounded-xl bg-ink-900 text-base font-semibold text-white">
               {task.primaryCta.label}
             </Link>
+          ) : task.primaryCta.href?.startsWith("/") ? (
+            <Link href={task.primaryCta.href} className="tap flex h-13 w-full items-center justify-center rounded-xl bg-ink-900 text-base font-semibold text-white">
+              {task.primaryCta.label}
+            </Link>
           ) : task.primaryCta.href ? (
             <a href={task.primaryCta.href} target="_blank" rel="noopener noreferrer" className="tap flex h-13 w-full items-center justify-center rounded-xl bg-ink-900 text-base font-semibold text-white">
               {task.primaryCta.label} ↗
@@ -115,10 +119,9 @@ export default async function TaskPage({ params }: { params: Promise<{ taskId: s
                 <ol className="space-y-3">{task.steps.map((s, i) => <Block key={i} n={i + 1} heading={s.heading} text={substitute(s.text)} />)}</ol>
               </Collapsible>
             )}
-            {(task.troubleshooting.length > 0 || task.serviceOffer === "task_3_4") && (
+            {task.troubleshooting.length > 0 && (
               <Collapsible title="If something goes wrong">
                 <ul className="space-y-3">{task.troubleshooting.map((s, i) => <Block key={i} heading={s.heading} text={s.text} />)}</ul>
-                {task.serviceOffer === "task_3_4" && <ServiceOffer placement="task_3_4" businessId={ctx.business.id} />}
               </Collapsible>
             )}
             {task.mistakes.length > 0 && (

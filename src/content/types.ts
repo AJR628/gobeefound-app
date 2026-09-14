@@ -61,7 +61,8 @@ export const TOOL_OUTPUT_FIELDS: Record<ToolId, readonly BusinessProfileField[]>
   gbp_kit: ["gbpDescription", "services"],
 };
 
-export const SERVICE_PLACEMENTS = ["task_3_1", "task_3_4", "home_footer", "your_business_footer"] as const;
+/** `task_3_4` is retired (V4 §L: no offer mid-build) but remains a valid enum value in the database. */
+export const SERVICE_PLACEMENTS = ["task_3_1", "task_3_4", "home_footer", "your_business_footer", "builder_entry"] as const;
 export type ServicePlacement = (typeof SERVICE_PLACEMENTS)[number];
 
 export const MODULE_IDS = [

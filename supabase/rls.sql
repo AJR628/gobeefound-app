@@ -68,12 +68,21 @@ create policy "aiallowance_owner_select" on "AiAllowance" for select using (priv
 alter table "AiAllowanceAdjustment" enable row level security;
 create policy "aiadjustment_owner_select" on "AiAllowanceAdjustment" for select using (private.owns_business("businessId"));
 
+-- V4 §D — the website draft and approved versions. Owner may READ; only the server writes. A public
+-- renderer never uses these policies (it reads SiteVersion through a server query with a read-only role).
+alter table "SiteDraft" enable row level security;
+create policy "sitedraft_owner_select" on "SiteDraft" for select using (private.owns_business("businessId"));
+
+alter table "SiteVersion" enable row level security;
+create policy "siteversion_owner_select" on "SiteVersion" for select using (private.owns_business("businessId"));
+
 -- Prisma's own bookkeeping table: RLS on, no policies = not reachable over REST. Prisma is unaffected.
 alter table "_prisma_migrations" enable row level security;
 
--- Storage: the logo bucket is PRIVATE (public=false, 2 MB, PNG/JPEG only). Objects live at
--- <businessId>/logo.<ext>. Reads happen via server-issued signed URLs; only the service role
--- touches the bucket, so no storage.objects policies are needed.
+-- Storage: the assets bucket is PRIVATE (public=false, 4 MB, PNG/JPEG only). Objects live at
+-- <businessId>/logo.<ext>, <businessId>/hero.<ext>, <businessId>/logo-candidates/<id>.png (V4 §A3).
+-- Reads happen via server-issued signed URLs; only the service role touches the bucket, so no
+-- storage.objects policies are needed. The 4 MB cap is the hero-photo limit; logos are capped at 2 MB in code.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('logos','logos',false,2097152,array['image/png','image/jpeg'])
-on conflict (id) do update set public=false, file_size_limit=2097152, allowed_mime_types=array['image/png','image/jpeg'];
+values ('logos','logos',false,4194304,array['image/png','image/jpeg'])
+on conflict (id) do update set public=false, file_size_limit=4194304, allowed_mime_types=array['image/png','image/jpeg'];

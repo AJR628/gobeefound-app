@@ -24,6 +24,14 @@ export const EVENT_PROPERTY_ALLOWLIST: Record<string, readonly string[]> = {
   // V4 §E / §18 — AI health. Never a prompt, output, business name, or token count.
   ai_generation_failed: ["operationClass", "errorKind"],
   allowance_exhausted: ["bucket"],
+  // V4 §D — website builder. Never the business name, domain, or any copy.
+  builder_opened: [],
+  site_draft_created: ["replayed"],
+  site_section_regenerated: ["section"],
+  site_approved: ["versionNumber"],
+  site_exported: ["versionNumber"],
+  logo_generated: ["style"],
+  logo_selected: [],
   asset_declared: ["assetType"],
   asset_removed: ["assetType"],
   logo_uploaded: [],
