@@ -89,8 +89,9 @@ create policy "domain_owner_select" on "CustomDomain" for select using (private.
 
 alter table "ContactRelayCounter" enable row level security;
 
--- V4 §A11 — the READ-ONLY role for the public origin (sites.gobeefound.com). Prisma bypasses RLS, so this
--- role IS the isolation: it can see published sites and domains and count relay submissions — nothing else.
+-- V4 §A11 — the least-privilege role for the public origin (sites.gobeefound.com). Prisma obeys RLS for
+-- normal Postgres roles, so the role needs narrow policies in addition to table grants. Owner policies are
+-- limited to Supabase API roles so gbf_public never evaluates the private.owns_business() helper.
 -- Run once; set the password in the dashboard and put the connection string in DATABASE_URL_PUBLIC on the
 -- PUBLIC Netlify site only. (Supabase: create the role, then grant. Use the pooler host in the URL.)
 --   create role gbf_public login password '<strong password>';
@@ -98,6 +99,26 @@ alter table "ContactRelayCounter" enable row level security;
 --   grant select on "SitePublication", "SiteVersion", "CustomDomain" to gbf_public;
 --   grant select, insert, update, delete on "ContactRelayCounter" to gbf_public;
 --   -- deliberately NO grants on BusinessProfile, Business, User, Purchase, AiUsage, SiteDraft, ManagedSubscription.
+
+alter policy "siteversion_owner_select" on "SiteVersion" to authenticated, anon;
+alter policy "sitepub_owner_select" on "SitePublication" to authenticated, anon;
+alter policy "domain_owner_select" on "CustomDomain" to authenticated, anon;
+
+create policy "sitepub_public_select" on "SitePublication" for select to gbf_public
+using ("publishedAt" is not null and "unpublishedAt" is null and "currentVersionId" is not null);
+
+create policy "siteversion_public_select" on "SiteVersion" for select to gbf_public
+using (exists (
+  select 1 from "SitePublication" p
+  where p."currentVersionId" = "SiteVersion".id
+    and p."publishedAt" is not null and p."unpublishedAt" is null
+));
+
+create policy "domain_public_select" on "CustomDomain" for select to gbf_public
+using (state = 'active' and "removedAt" is null);
+
+create policy "relay_counter_public_all" on "ContactRelayCounter" for all to gbf_public
+using (true) with check (true);
 
 -- Prisma's own bookkeeping table: RLS on, no policies = not reachable over REST. Prisma is unaffected.
 alter table "_prisma_migrations" enable row level security;
