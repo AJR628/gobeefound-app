@@ -1,7 +1,13 @@
 import { PrismaClient } from "@prisma/client";
 
+// V4 §A11 — the public role connects with DATABASE_URL_PUBLIC, a Postgres role granted SELECT on
+// SitePublication / SiteVersion / CustomDomain and INSERT/UPDATE on ContactRelayCounter ONLY (see
+// supabase/rls.sql). Prisma bypasses RLS, so this role IS the isolation for the public origin. Fails closed.
+
 function runtimeDatabaseUrl(): string | undefined {
-  const value = process.env.DATABASE_URL;
+  const isPublic = process.env.SITE_ROLE === "public";
+  const value = isPublic ? process.env.DATABASE_URL_PUBLIC : process.env.DATABASE_URL;
+  if (isPublic && !value) throw new Error("SITE_ROLE=public requires DATABASE_URL_PUBLIC (read-only role). Refusing to start with the app credentials.");
   if (!value) return undefined;
 
   const url = new URL(value);

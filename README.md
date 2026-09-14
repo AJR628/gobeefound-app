@@ -129,8 +129,38 @@ select * from "AiUsage" where "generationId"::text like '<first 8 chars of the c
 ```
 Alert threshold to watch by hand until Phase 8: est_usd per day above $5, or any `config`/`quota` kind.
 
-Runbooks for Managed cancellation/expiry, unpublishing a site, and removing a custom domain are
-added in the phase that introduces each capability.
+### Managed hosting (V4 §F/§I) — operator setup
+
+1. **Stripe:** create a recurring price, $19/month, product "GoBeeFound Managed Website" → `STRIPE_PRICE_ID_MANAGED_MONTHLY`.
+   Add these webhook events to the existing endpoint: `customer.subscription.created`, `customer.subscription.updated`,
+   `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`. Enable the **Customer Portal**
+   (Settings → Billing → Customer portal) so owners can fix a card.
+2. **Second Netlify site** from this same repo for `sites.gobeefound.com`, `SITE_ROLE=public`, and ONLY the
+   public env subset (see `.env.example` header). Add `sites.gobeefound.com` as its custom domain. Put its site
+   id in `NETLIFY_PUBLIC_SITE_ID` and a personal access token in `NETLIFY_API_TOKEN` **on the app site**.
+3. **Supabase:** run the `gbf_public` role statements in `supabase/rls.sql` and put its pooled connection
+   string in `DATABASE_URL_PUBLIC` on the public site. Create the public bucket (`site-assets`) via the
+   bucket statement in `rls.sql`.
+4. **DNS:** `sites.gobeefound.com` → CNAME to the public Netlify site.
+
+**Cancellation / expiry** are automatic (webhook): cancel = live to period end; payment failure = 7-day grace
+with an email; then unpublish (soft) and release domains. Reactivation republishes the same version.
+
+**Unpublish a site now** (abuse report, legal, or owner request):
+```sql
+update "SitePublication" set "unpublishedAt" = now() where "businessId" = '<business uuid>';
+```
+then purge the public site's cache for tag `site-<business uuid>` (Netlify → the public site → Deploys →
+Purge cache, or `POST https://api.netlify.com/api/v1/purge`).
+
+**Remove a custom domain by hand:** mark it removed and delete both aliases (apex + www) from the public
+site's domain settings in Netlify.
+```sql
+update "CustomDomain" set state = 'removed', "removedAt" = now() where domain = '<domain>';
+```
+
+**Founding-cohort domain cap:** `ALIAS_COHORT_CAP` (20) in `src/lib/netlify.ts`. When reached, new
+connections are refused with a friendly message and a log line — that is the signal to finish Phase 7.
 
 ## Content status
 

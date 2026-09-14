@@ -184,6 +184,37 @@ enum AiAllowanceSource {
   purchase
 }
 
+// ---------- V4 §F/§I/§H — Managed hosting, publishing, domains, contact relay ----------
+
+/**
+ * Exactly ONE recurring product exists (V4 §F). Guardrail-asserted to have exactly this one value.
+ */
+enum ManagedProduct {
+  managed_website
+}
+
+enum ManagedStatus {
+  incomplete
+  active
+  past_due
+  cancel_at_period_end
+  canceled
+  ended
+}
+
+enum DomainState {
+  pending // records shown, not yet verified
+  dns_verified // TXT + CNAME/A confirmed; hostname being attached
+  active // serving over HTTPS
+  failed // last check failed; reason recorded
+  removed
+}
+
+enum DomainProvider {
+  netlify_alias // founding cohort only (hard cap in code)
+  cloudflare_saas // durable layer (Phase 7)
+}
+
 // ---------- models (11 V1 + V4, see AGENTS.md §17.1) ----------
 
 model User {
@@ -223,6 +254,9 @@ model Business {
   aiAdjustments    AiAllowanceAdjustment[]
   siteDraft        SiteDraft?
   siteVersions     SiteVersion[]
+  publication      SitePublication?
+  managed          ManagedSubscription?
+  domains          CustomDomain[]
 }
 
 model OnboardingAnswers {
@@ -437,10 +471,93 @@ model SiteVersion {
   contactEmail  String? // owner-confirmed destination for the Managed contact form (V4 §H)
   createdAt     DateTime @default(now())
 
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business    Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  publication SitePublication?
 
   @@unique([businessId, versionNumber])
   @@index([businessId, createdAt])
+}
+
+/**
+ * V4 §F — where a business's site is public. One per business. `slug` is the path on the GoBeeFound
+ * public origin; `currentVersionId` is the ONLY version the public renderer serves. Rollback = repoint.
+ * `unpublishedAt` set = offline (soft; data retained). `assets` are public-bucket URLs copied at publish.
+ */
+model SitePublication {
+  businessId       String    @id @db.Uuid
+  slug             String    @unique
+  currentVersionId String?   @unique @db.Uuid
+  assets           Json      @default("{}") // { logoUrl, heroUrl } public URLs for the current version
+  publishedAt      DateTime?
+  unpublishedAt    DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  business       Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  currentVersion SiteVersion? @relation(fields: [currentVersionId], references: [id], onDelete: SetNull)
+
+  @@index([slug])
+}
+
+/**
+ * V4 §F — THE single recurring product. Entitlement is DERIVED from status + currentPeriodEnd + graceEndsAt
+ * (src/lib/managed/entitlement.ts); never stored. Written only by the verified Stripe webhook and the
+ * owner's cancel/reactivate actions.
+ */
+model ManagedSubscription {
+  businessId           String         @id @db.Uuid
+  userId               String?        @db.Uuid // nulled on account deletion, like Purchase
+  product              ManagedProduct @default(managed_website)
+  stripeCustomerId     String
+  stripeSubscriptionId String         @unique
+  status               ManagedStatus  @default(incomplete)
+  currentPeriodEnd     DateTime?
+  graceEndsAt          DateTime? // set on payment failure: now + 7 days
+  canceledAt           DateTime?
+  endedAt              DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+/**
+ * V4 §I — a customer domain. `domain` is globally unique, so two businesses can never claim one.
+ * Verification must succeed before any hostname is attached anywhere. `verificationToken` is server-only.
+ */
+model CustomDomain {
+  id                String         @id @default(uuid()) @db.Uuid
+  businessId        String         @db.Uuid
+  domain            String         @unique // apex, lowercase, no scheme (e.g. mikesjunkremoval.com)
+  provider          DomainProvider @default(netlify_alias)
+  providerRef       String? // alias/hostname id at the provider
+  state             DomainState    @default(pending)
+  verificationToken String
+  dnsProvider       String? // owner's answer to "where is your DNS?" — drives the instructions shown
+  lastCheckedAt     DateTime?
+  lastError         String?
+  mxSeenAt          DateTime? // MX records observed before the change (so we can warn if they vanish)
+  verifiedAt        DateTime?
+  activeAt          DateTime?
+  removedAt         DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+}
+
+/**
+ * V4 §H — content-free rate-limit counters for the contact relay. No message, no name, no email, no raw IP.
+ */
+model ContactRelayCounter {
+  key         String   @id // e.g. "slug:mikes-junk:2026-09-14" or "h:<sha256(ip) prefix>:202609141812"
+  count       Int      @default(0)
+  windowStart DateTime @default(now())
+  expiresAt   DateTime
+
+  @@index([expiresAt])
 }
 
 /**

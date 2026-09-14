@@ -155,6 +155,11 @@ export function SiteBody({ site }: { site: RenderableSite }) {
           <div className="s-wrap s-contact">
             <div>
               <h2>{copy.contact.heading || "Get in touch"}</h2>
+              {site.notice && (
+                <p className="s-card" role="status">
+                  <strong>{site.notice}</strong>
+                </p>
+              )}
               {copy.contact.body && <p className="s-muted">{copy.contact.body}</p>}
               <ul className="s-contact-list">
                 {facts.phone && (

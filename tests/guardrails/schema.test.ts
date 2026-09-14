@@ -119,6 +119,11 @@ describe("V4 §E — allowance model rules (when present)", () => {
   });
   it("ContactRelayCounter, when present, stores no message content or PII columns", () => {
     if (!modelNames.includes("ContactRelayCounter")) return;
-    expect(block("model", "ContactRelayCounter")).not.toMatch(/message|email|name|phone|body|ip\b/i);
+    const columns = block("model", "ContactRelayCounter")
+      .split("\n")
+      .slice(1, -1)
+      .map((l) => l.replace(/\/\/.*$/, "").trim().split(/\s+/)[0] ?? "")
+      .filter((c) => c && !c.startsWith("@@"));
+    expect(columns).toEqual(["key", "count", "windowStart", "expiresAt"]);
   });
 });

@@ -76,6 +76,29 @@ create policy "sitedraft_owner_select" on "SiteDraft" for select using (private.
 alter table "SiteVersion" enable row level security;
 create policy "siteversion_owner_select" on "SiteVersion" for select using (private.owns_business("businessId"));
 
+-- V4 §F/§I/§H — Managed. Owner may READ their publication, subscription, and domains; only the server writes.
+-- ContactRelayCounter: RLS on, no policies — unreachable over REST; only the public role touches it.
+alter table "SitePublication" enable row level security;
+create policy "sitepub_owner_select" on "SitePublication" for select using (private.owns_business("businessId"));
+
+alter table "ManagedSubscription" enable row level security;
+create policy "managed_owner_select" on "ManagedSubscription" for select using (private.owns_business("businessId"));
+
+alter table "CustomDomain" enable row level security;
+create policy "domain_owner_select" on "CustomDomain" for select using (private.owns_business("businessId"));
+
+alter table "ContactRelayCounter" enable row level security;
+
+-- V4 §A11 — the READ-ONLY role for the public origin (sites.gobeefound.com). Prisma bypasses RLS, so this
+-- role IS the isolation: it can see published sites and domains and count relay submissions — nothing else.
+-- Run once; set the password in the dashboard and put the connection string in DATABASE_URL_PUBLIC on the
+-- PUBLIC Netlify site only. (Supabase: create the role, then grant. Use the pooler host in the URL.)
+--   create role gbf_public login password '<strong password>';
+--   grant usage on schema public to gbf_public;
+--   grant select on "SitePublication", "SiteVersion", "CustomDomain" to gbf_public;
+--   grant select, insert, update, delete on "ContactRelayCounter" to gbf_public;
+--   -- deliberately NO grants on BusinessProfile, Business, User, Purchase, AiUsage, SiteDraft, ManagedSubscription.
+
 -- Prisma's own bookkeeping table: RLS on, no policies = not reachable over REST. Prisma is unaffected.
 alter table "_prisma_migrations" enable row level security;
 
@@ -86,3 +109,9 @@ alter table "_prisma_migrations" enable row level security;
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('logos','logos',false,4194304,array['image/png','image/jpeg'])
 on conflict (id) do update set public=false, file_size_limit=4194304, allowed_mime_types=array['image/png','image/jpeg'];
+
+-- V4 §F — PUBLIC bucket for published-site assets (copy-on-publish, versioned paths). Read by anyone;
+-- written only by the service role at publish time. Never holds anything that isn't already public.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('site-assets','site-assets',true,4194304,array['image/png','image/jpeg'])
+on conflict (id) do update set public=true, file_size_limit=4194304, allowed_mime_types=array['image/png','image/jpeg'];

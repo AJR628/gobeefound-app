@@ -160,6 +160,8 @@ export interface RenderableSite {
   mode: "preview" | "published" | "export";
   /** Absolute or relative form endpoint; null → the renderer falls back to call/text/email. */
   formEndpoint: string | null;
+  /** A one-line status shown in the contact section (e.g. "Thanks — your message was sent."). App-authored only. */
+  notice?: string | null;
 }
 
 /**
