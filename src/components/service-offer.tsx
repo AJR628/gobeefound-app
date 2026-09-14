@@ -9,9 +9,14 @@ const COPY: Record<ServicePlacement, { body: string; cta: string; quiet?: boolea
     body: "That's the whole list. Most people spend 10–20 hours on it. If you'd rather not — we'll build it for $900, and what you paid for Launch comes off that.",
     cta: "See what's included",
   },
+  // Retired in V4 (§L: no offer mid-build). Kept so the enum value still renders sensibly if ever seen.
   task_3_4: {
-    body: "Stuck here? This is the step people get stuck on. Send us your details and we'll point it for you.",
-    cta: "Have gobeefound do this",
+    body: "Rather hand the whole website off? We'll build it for $900 — and what you paid for Launch comes off the price.",
+    cta: "See what's included",
+  },
+  builder_entry: {
+    body: "Have GoBeeFound do it for you — $900. You hand us the details, we build and set it up, and what you paid for Launch comes off the price. A different amount of your time, not a fallback.",
+    cta: "See what's included",
   },
   home_footer: {
     body: "Rather not build the website yourself? We'll build it for $900 — and what you paid for Launch comes off the price.",

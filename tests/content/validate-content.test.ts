@@ -115,10 +115,12 @@ describe("content: references resolve", () => {
     expect(others.map((t) => t.id)).toEqual([]);
   });
 
-  it("service placements task_3_1 and task_3_4 are declared by exactly those tasks", () => {
+  it("the $900 offer appears at 3.1 and the builder entry (3.3) only — never mid-build, never in Module 1 (V4 §L)", () => {
     expect(TASK_BY_ID["3.1"]!.serviceOffer).toBe("task_3_1");
-    expect(TASK_BY_ID["3.4"]!.serviceOffer).toBe("task_3_4");
+    expect(TASK_BY_ID["3.3"]!.serviceOffer).toBe("builder_entry");
+    expect(TASK_BY_ID["3.4"]!.serviceOffer).toBeUndefined();
     for (const t of ALL_TASKS) if (t.moduleId === "foundation") expect(t.serviceOffer, `P11: ${t.id}`).toBeUndefined();
+    for (const t of ALL_TASKS) expect(t.serviceOffer, `retired placement on ${t.id}`).not.toBe("task_3_4");
   });
 
   it("every verify-variant-mapped task actually defines a verifyVariant", () => {

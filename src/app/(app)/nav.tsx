@@ -67,6 +67,7 @@ function Menu({ supportEmail }: { supportEmail?: string }) {
         >
           {[
             { href: "/your-business", label: "Your Business" },
+            { href: "/site", label: "Your website" },
             { href: "/tools", label: "Tools" },
             { href: "/plan", label: "Your plan" },
             { href: "/account", label: "Account" },
