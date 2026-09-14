@@ -3,14 +3,21 @@
 -- enforces ownership in code on every query. These policies close the OTHER door: Supabase's
 -- PostgREST / anon / authenticated roles can never read or write another owner's rows.
 --
--- Apply once in the Supabase SQL editor after `prisma migrate deploy`.
--- Prisma table names are the model names (quoted, case-sensitive).
+-- Apply once after the Prisma migration. Prisma table names are the model names (quoted).
+-- Applied to project rkhiapendaxkreygtfhn on 2026-09-13; passes the Supabase security advisor.
 
--- Helper: does the current auth user own this business?
-create or replace function public.owns_business(b uuid) returns boolean
+-- Helper lives in a NON-exposed schema so it is never callable via /rest/v1/rpc.
+-- (Advisor lints 0028/0029: SECURITY DEFINER functions in `public` are executable over REST.)
+create schema if not exists private;
+revoke all on schema private from public;
+grant usage on schema private to authenticated, anon;
+
+create or replace function private.owns_business(b uuid) returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (select 1 from "Business" where id = b and "ownerId" = auth.uid());
 $$;
+revoke execute on function private.owns_business(uuid) from public;
+grant execute on function private.owns_business(uuid) to authenticated, anon;
 
 -- 1. User — a user sees only their own row.
 alter table "User" enable row level security;
@@ -23,34 +30,39 @@ create policy "business_owner_all" on "Business" for all using ("ownerId" = auth
 
 -- 3–9, 11. Business-scoped tables
 alter table "OnboardingAnswers" enable row level security;
-create policy "onboarding_owner_all" on "OnboardingAnswers" for all using (public.owns_business("businessId")) with check (public.owns_business("businessId"));
+create policy "onboarding_owner_all" on "OnboardingAnswers" for all using (private.owns_business("businessId")) with check (private.owns_business("businessId"));
 
 alter table "BusinessProfile" enable row level security;
-create policy "profile_owner_all" on "BusinessProfile" for all using (public.owns_business("businessId")) with check (public.owns_business("businessId"));
+create policy "profile_owner_all" on "BusinessProfile" for all using (private.owns_business("businessId")) with check (private.owns_business("businessId"));
 
 alter table "FieldProvenance" enable row level security;
-create policy "provenance_owner_all" on "FieldProvenance" for all using (public.owns_business("businessId")) with check (public.owns_business("businessId"));
+create policy "provenance_owner_all" on "FieldProvenance" for all using (private.owns_business("businessId")) with check (private.owns_business("businessId"));
 
 alter table "ConnectedAsset" enable row level security;
-create policy "asset_owner_all" on "ConnectedAsset" for all using (public.owns_business("businessId")) with check (public.owns_business("businessId"));
+create policy "asset_owner_all" on "ConnectedAsset" for all using (private.owns_business("businessId")) with check (private.owns_business("businessId"));
 
 alter table "TaskState" enable row level security;
-create policy "taskstate_owner_all" on "TaskState" for all using (public.owns_business("businessId")) with check (public.owns_business("businessId"));
+create policy "taskstate_owner_all" on "TaskState" for all using (private.owns_business("businessId")) with check (private.owns_business("businessId"));
 
 alter table "GeneratedContent" enable row level security;
-create policy "generated_owner_all" on "GeneratedContent" for all using (public.owns_business("businessId")) with check (public.owns_business("businessId"));
+create policy "generated_owner_all" on "GeneratedContent" for all using (private.owns_business("businessId")) with check (private.owns_business("businessId"));
 
 alter table "Decision" enable row level security;
-create policy "decision_owner_all" on "Decision" for all using (public.owns_business("businessId")) with check (public.owns_business("businessId"));
+create policy "decision_owner_all" on "Decision" for all using (private.owns_business("businessId")) with check (private.owns_business("businessId"));
 
 alter table "ServiceLead" enable row level security;
-create policy "servicelead_owner_all" on "ServiceLead" for all using (public.owns_business("businessId")) with check (public.owns_business("businessId"));
+create policy "servicelead_owner_all" on "ServiceLead" for all using (private.owns_business("businessId")) with check (private.owns_business("businessId"));
 
 -- 10. Purchase — readable by its owner; only the server (webhook, service role) writes it.
 alter table "Purchase" enable row level security;
 create policy "purchase_owner_select" on "Purchase" for select using ("userId" = auth.uid());
 
--- Storage: the logo bucket is PRIVATE. Objects live at <businessId>/logo.<ext>.
--- Reads happen via server-issued signed URLs; direct client access is denied.
--- (Create the bucket named per SUPABASE_LOGO_BUCKET with "Public" OFF. No storage policies
---  are needed because only the service role touches it.)
+-- Prisma's own bookkeeping table: RLS on, no policies = not reachable over REST. Prisma is unaffected.
+alter table "_prisma_migrations" enable row level security;
+
+-- Storage: the logo bucket is PRIVATE (public=false, 2 MB, PNG/JPEG only). Objects live at
+-- <businessId>/logo.<ext>. Reads happen via server-issued signed URLs; only the service role
+-- touches the bucket, so no storage.objects policies are needed.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('logos','logos',false,2097152,array['image/png','image/jpeg'])
+on conflict (id) do update set public=false, file_size_limit=2097152, allowed_mime_types=array['image/png','image/jpeg'];
