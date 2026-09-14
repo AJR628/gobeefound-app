@@ -21,9 +21,9 @@ function esc(s: string): string {
  * A complete, self-contained HTML document. Only the app's own constants (SITE_CSS, theme variables)
  * and React-escaped strings reach the markup — never raw model text.
  */
-export function renderSiteDocument(site: RenderableSite, opts: { cssHref?: string } = {}): string {
+export function renderSiteDocument(site: RenderableSite, opts: { cssHref?: string; notice?: string } = {}): string {
   const vars = themeVariables(site.setup.theme, resolvePalette(site.setup.palette, site.facts.brandColors));
-  const body = renderToStaticMarkup(createElement(SiteBody, { site }));
+  const body = renderToStaticMarkup(createElement(SiteBody, { site: opts.notice ? { ...site, notice: opts.notice } : site }));
   const css = opts.cssHref ? `<link rel="stylesheet" href="${esc(opts.cssHref)}">` : `<style>${SITE_CSS}</style>`;
   const title = site.copy.seo.pageTitle.trim() || site.facts.businessName;
   const desc = site.copy.seo.metaDescription.trim();

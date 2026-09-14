@@ -1,8 +1,15 @@
-# GoBeeFound V1 — Netlify deployment (§16.1).
+# GoBeeFound — Netlify deployment (§16.1, V4 §A11).
 # `npm run build` runs content validation + guardrail tests BEFORE `next build`,
-# so a content error or a §17.4 violation fails the deploy.
+# so a content error or a guardrail violation fails the deploy.
 #
-# No scheduled functions, no background functions (§3). Do not add [functions] schedules.
+# ONE repository, TWO Netlify sites, both built from this file:
+#   app    (app.gobeefound.com)   — Site settings → Environment: SITE_ROLE=app    + every variable in .env.example
+#   public (sites.gobeefound.com) — Site settings → Environment: SITE_ROLE=public + ONLY the public subset
+#                                   (DATABASE_URL_PUBLIC read-only role, NEXT_PUBLIC_SUPABASE_URL,
+#                                    PUBLIC_SITE_HOST, RESEND_API_KEY, PUBLIC_FORWARD_SECRET).
+# The middleware refuses to serve app routes on the public site and public routes on the app site.
+#
+# No scheduled functions, no background functions until Managed health checks exist (V4 §K).
 
 [build]
   command = "npm run build"

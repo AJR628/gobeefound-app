@@ -110,6 +110,26 @@ export async function removeImages(paths: string[]): Promise<void> {
   await serviceClient().storage.from(bucket()).remove(paths).then(() => undefined, () => undefined);
 }
 
+// ---------------------------------------------------------------------------------------------
+// V4 §F — PUBLIC assets for published sites (copy-on-publish). A separate, public bucket; paths are
+// versioned so a published page never depends on a signed URL and never changes under a cached version.
+// ---------------------------------------------------------------------------------------------
+
+export function publicAssetsBucket(): string {
+  return process.env.SUPABASE_PUBLIC_ASSETS_BUCKET ?? "site-assets";
+}
+
+/** Copy a private image to the public bucket at `${destBase}.<ext>`; returns its public URL, or null. */
+export async function copyToPublicAssets(privatePath: string, destBase: string): Promise<string | null> {
+  const img = await downloadImage(privatePath);
+  if (!img) return null;
+  const dest = `${destBase}.${img.ext}`;
+  const client = serviceClient();
+  const { error } = await client.storage.from(publicAssetsBucket()).upload(dest, img.bytes, { contentType: img.ext === "png" ? "image/png" : "image/jpeg", upsert: true, cacheControl: "31536000" });
+  if (error) return null;
+  return client.storage.from(publicAssetsBucket()).getPublicUrl(dest).data.publicUrl;
+}
+
 /** Make a generated candidate THE logo: copy bytes to the canonical logo path and clean up the candidates. */
 export async function promoteLogoCandidate(businessId: string, candidatePath: string): Promise<LogoUploadResult> {
   if (!pathBelongsTo(candidatePath, businessId) || !candidatePath.includes("/logo-candidates/")) return { ok: false, error: "That image isn't yours to use." };
