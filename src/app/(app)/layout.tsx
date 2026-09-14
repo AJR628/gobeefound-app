@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/current-user";
-import { AppNav } from "./nav";
+import { AppNavMenu, AppNavTabs } from "./nav";
 import { AnalyticsProvider } from "@/lib/analytics/client";
 
 // §7 global chrome: top bar (mark → /home, percentage, menu) + fixed four-tab bottom bar.
@@ -16,10 +16,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <Link href="/home" className="tap flex items-center gap-2 font-bold tracking-tight">
           <span aria-hidden>🐝</span> gobeefound
         </Link>
-        <AppNav.Menu supportEmail={process.env.SUPPORT_EMAIL} />
+        <AppNavMenu supportEmail={process.env.SUPPORT_EMAIL} />
       </header>
       <main className="flex-1 px-4 pb-24 pt-5">{children}</main>
-      <AppNav.Tabs />
+      <AppNavTabs />
     </div>
   );
 }
