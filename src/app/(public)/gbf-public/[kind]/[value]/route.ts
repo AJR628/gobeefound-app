@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPublishedSiteByHost, getPublishedSiteBySlug } from "@/lib/site/public-read";
-import { renderSiteDocument, toRenderable } from "@/lib/site/render";
+import { renderSiteDocumentAsync, toRenderable } from "@/lib/site/render";
 import { siteRole } from "@/lib/public-routing";
 
 // V4 §A11 — the public site. Reached ONLY via the middleware rewrite on the public role
@@ -17,7 +17,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ kind: strin
 
   const sent = new URL(request.url).searchParams.get("sent") === "1";
   const formEndpoint = site.spec.setup.primaryAction === "form" && site.contactEmail ? `/api/contact/${site.slug}` : null;
-  const html = renderSiteDocument(toRenderable(site.spec, site.assets, "published", formEndpoint), { notice: sent ? "Thanks — your message was sent." : undefined });
+  const html = await renderSiteDocumentAsync(toRenderable(site.spec, site.assets, "published", formEndpoint), { notice: sent ? "Thanks — your message was sent." : undefined });
 
   return new NextResponse(html, {
     status: 200,

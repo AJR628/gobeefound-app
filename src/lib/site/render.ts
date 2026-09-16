@@ -2,8 +2,10 @@
 // HTML document (for the export and, later, the public origin). Server-only.
 import "server-only";
 import { createElement } from "react";
-// server.edge (not react-dom/server): the App Router forbids the classic entry in the server layer.
+// The synchronous API is retained for downloadable ZIP exports. Public App Router requests use
+// React 19's async static API below; Next.js rejects legacy renderToStaticMarkup at runtime.
 import { renderToStaticMarkup } from "react-dom/server.edge";
+import { prerender } from "react-dom/static.edge";
 import { SiteBody } from "@/components/site/site-renderer";
 import { SITE_CSS } from "@/components/site/site-css";
 import { resolvePalette, themeStyleAttr, themeVariables } from "@/components/site/themes";
@@ -24,6 +26,18 @@ function esc(s: string): string {
 export function renderSiteDocument(site: RenderableSite, opts: { cssHref?: string; notice?: string } = {}): string {
   const vars = themeVariables(site.setup.theme, resolvePalette(site.setup.palette, site.facts.brandColors));
   const body = renderToStaticMarkup(createElement(SiteBody, { site: opts.notice ? { ...site, notice: opts.notice } : site }));
+  return siteDocument(site, body, vars, opts);
+}
+
+/** React 19-compatible renderer for Next.js route handlers. */
+export async function renderSiteDocumentAsync(site: RenderableSite, opts: { cssHref?: string; notice?: string } = {}): Promise<string> {
+  const vars = themeVariables(site.setup.theme, resolvePalette(site.setup.palette, site.facts.brandColors));
+  const { prelude } = await prerender(createElement(SiteBody, { site: opts.notice ? { ...site, notice: opts.notice } : site }));
+  const body = await new Response(prelude as BodyInit).text();
+  return siteDocument(site, body, vars, opts);
+}
+
+function siteDocument(site: RenderableSite, body: string, vars: Record<string, string>, opts: { cssHref?: string; notice?: string }): string {
   const css = opts.cssHref ? `<link rel="stylesheet" href="${esc(opts.cssHref)}">` : `<style>${SITE_CSS}</style>`;
   const title = site.copy.seo.pageTitle.trim() || site.facts.businessName;
   const desc = site.copy.seo.metaDescription.trim();

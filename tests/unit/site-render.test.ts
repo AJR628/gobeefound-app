@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import { unzipSync, strFromU8 } from "fflate";
-import { renderSiteDocument, toRenderable } from "@/lib/site/render";
+import { renderSiteDocument, renderSiteDocumentAsync, toRenderable } from "@/lib/site/render";
 import { buildExportZip } from "@/lib/site/export";
 import { DEFAULT_SETUP, siteVersionSpecSchema, type SiteVersionSpec } from "@/lib/site/spec";
 import { logoPrompt } from "@/lib/ai/images";
@@ -42,6 +42,12 @@ const spec: SiteVersionSpec = siteVersionSpecSchema.parse({
 });
 
 describe("renderSiteDocument", () => {
+  it("renders through React 19's async static API for the public Next.js route", async () => {
+    const html = await renderSiteDocumentAsync(toRenderable(spec, { logoUrl: null, heroUrl: null }, "published", "/api/contact/mikes"));
+    expect(html).toContain("<!doctype html>");
+    expect(html).toContain("Mike's Junk Removal");
+    expect(html).not.toContain("<script>alert(1)</script>");
+  });
   it("escapes model text — a script tag in the headline is inert", () => {
     const html = renderSiteDocument(toRenderable(spec, { logoUrl: null, heroUrl: null }, "published", "/api/contact/mikes"));
     expect(html).not.toContain("<script>alert(1)</script>");
